@@ -678,19 +678,47 @@ def main():
     try:
         df = pd.read_csv(archivo).rename(columns=lambda x: x.strip())
         
-        # Detectar columna con datos (emails, URLs o dominios)
-        data_cols = []
+        # Detectar columna analizando las primeras 5 filas
+        def es_dato_valido(valor):
+            """Detecta si un valor es email, URL o dominio."""
+            if not isinstance(valor, str):
+                return False
+            valor = valor.strip().lower()
+            # Es email
+            if "@" in valor and "." in valor:
+                return True
+            # Es URL
+            if valor.startswith(("http://", "https://")):
+                return True
+            # Es dominio (tiene punto, no tiene espacios, parece dominio)
+            if "." in valor and " " not in valor and len(valor) > 3:
+                partes = valor.replace("www.", "").split(".")
+                if len(partes) >= 2 and len(partes[-1]) >= 2:
+                    return True
+            return False
+        
+        col_data = None
+        muestra_filas = df.head(5)
+        
         for col in df.columns:
-            col_lower = col.lower()
-            if any(kw in col_lower for kw in ['email', 'correo', 'mail', 'url', 'website', 'web', 'site', 'domain', 'dominio', 'sitio', 'pagina']):
-                data_cols.append(col)
+            valores_validos = sum(1 for v in muestra_filas[col] if es_dato_valido(str(v)))
+            if valores_validos >= 3:  # Al menos 3 de 5 filas tienen datos válidos
+                col_data = col
+                break
         
-        # Si no encuentra, usar la primera columna
-        if not data_cols:
-            data_cols = [df.columns[0]]
-            st.warning(f"⚠️ Usando primera columna: **{data_cols[0]}**")
+        if not col_data:
+            # Fallback: buscar por nombre de columna
+            for col in df.columns:
+                col_lower = col.lower()
+                if any(kw in col_lower for kw in ['email', 'correo', 'mail', 'url', 'website', 'web', 'site', 'domain', 'dominio']):
+                    col_data = col
+                    break
         
-        col_data = data_cols[0]
+        if not col_data:
+            st.error("❌ No se encontró columna con emails, URLs o dominios")
+            st.info("💡 Asegúrate de que al menos una columna tenga datos como: usuario@empresa.com, https://empresa.com o empresa.com")
+            return
+        
         st.success(f"✅ Columna detectada: **{col_data}**")
         
         df["_dominio"] = df[col_data].apply(extraer_dominio)
