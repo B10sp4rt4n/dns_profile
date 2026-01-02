@@ -1,5 +1,5 @@
 """
-Diagnóstico de Superficie Digital Corporativa v1
+ProspectScan - Identificación de Oportunidades de Seguridad
 Producto SaaS B2B - Análisis integral de dominios corporativos
 """
 
@@ -21,8 +21,8 @@ from datetime import datetime
 # ============================================================================
 
 st.set_page_config(
-    page_title="Diagnóstico de Superficie Digital Corporativa",
-    page_icon="🛡️",
+    page_title="ProspectScan",
+    page_icon="🎯",
     layout="wide"
 )
 
@@ -587,8 +587,8 @@ def main():
     
     col1, col2 = st.columns([3, 1])
     with col1:
-        st.title("🎯 Diagnóstico de Superficie Digital Corporativa")
-        st.markdown("**Identifica oportunidades de seguridad en tus prospectos comerciales**")
+        st.title("🎯 ProspectScan")
+        st.markdown("**Identifica oportunidades de seguridad en tus prospectos en segundos**")
     with col2:
         st.image("https://via.placeholder.com/150x80/4a90e2/ffffff?text=LOGO", width=150)
     

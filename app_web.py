@@ -1,5 +1,5 @@
 """
-Diagnóstico de Postura Web Corporativa v1
+ProspectScan - Análisis Web Corporativo
 Producto SaaS B2B - Análisis de dominios corporativos
 """
 
@@ -18,7 +18,7 @@ from urllib.parse import urlparse
 # CONFIGURACIÓN Y CONSTANTES
 # ============================================================================
 
-st.set_page_config(page_title="Diagnóstico de Postura Web Corporativa", layout="wide")
+st.set_page_config(page_title="ProspectScan - Web", page_icon="🌐", layout="wide")
 
 REQUEST_TIMEOUT = 10
 MAX_WORKERS = 10
@@ -449,8 +449,8 @@ def es_dominio_corporativo(dominio: str) -> bool:
 # ============================================================================
 
 def main():
-    st.title("🌐 Diagnóstico de Postura Web Corporativa")
-    st.markdown("**v1** — Análisis de seguridad web de dominios corporativos")
+    st.title("🌐 ProspectScan - Web Security")
+    st.markdown("**Análisis de seguridad web de dominios corporativos**")
     
     st.markdown("---")
     

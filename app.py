@@ -1,5 +1,5 @@
 """
-Diagnóstico de Postura de Correo Corporativo v1
+ProspectScan - Análisis de Correo Corporativo
 Producto SaaS B2B - Análisis de dominios corporativos
 """
 
@@ -19,7 +19,7 @@ from enum import Enum
 # CONFIGURACIÓN Y CONSTANTES
 # ============================================================================
 
-st.set_page_config(page_title="Diagnóstico de Postura de Correo Corporativo", layout="wide")
+st.set_page_config(page_title="ProspectScan - Correo", page_icon="📧", layout="wide")
 
 DNS_TIMEOUT = 5
 MAX_WORKERS = 15
@@ -428,7 +428,7 @@ def es_dominio_corporativo(dominio: str) -> bool:
 # ============================================================================
 
 def main():
-    st.title("📊 Diagnóstico de Postura de Correo Corporativo")
+    st.title("� ProspectScan - Análisis de Correo Corporativo")
     st.markdown("**v1** — Análisis de dominios corporativos")
     
     st.markdown("---")

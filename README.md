@@ -1,6 +1,6 @@
-# 🛡️ Diagnóstico de Superficie Digital Corporativa
+# 🎯 ProspectScan
 
-**Identifica oportunidades comerciales de seguridad en tus prospectos**
+**Identifica oportunidades de seguridad en tus prospectos en segundos**
 
 [![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://tu-app.streamlit.app)
 
@@ -16,7 +16,7 @@
 
 | Aplicación | Enfoque | Comando |
 |------------|---------|---------|
-| [app_superficie.py](app_superficie.py) | **Diagnóstico integral (Recomendado)** | `streamlit run app_superficie.py` |
+| [app_superficie.py](app_superficie.py) | **ProspectScan Completo (Recomendado)** | `streamlit run app_superficie.py` |
 | [app.py](app.py) | Solo correo (SPF/DMARC) | `streamlit run app.py` |
 | [app_web.py](app_web.py) | Solo web (Headers/SSL) | `streamlit run app_web.py` |
 
@@ -43,8 +43,8 @@
 ## 🔧 Instalación local
 
 ```bash
-git clone https://github.com/B10sp4rt4n/dns_profile
-cd dns_profile
+git clone https://github.com/B10sp4rt4n/prospectscan
+cd prospectscan
 pip install -r requirements.txt
 streamlit run app_superficie.py
 ```
@@ -105,4 +105,4 @@ PRs bienvenidos. Para cambios mayores, abre un issue primero.
 1. Fork este repo
 2. Conecta tu cuenta de Streamlit Cloud
 3. Selecciona `app_superficie.py` como main file
-4. ¡Listo! Tu app estará en `https://tu-usuario-dns-profile-app-superficie-main.streamlit.app`
+4. ¡Listo! Tu app estará en `https://tu-usuario-prospectscan-app-superficie-main.streamlit.app`
