@@ -678,13 +678,20 @@ def main():
     try:
         df = pd.read_csv(archivo).rename(columns=lambda x: x.strip())
         
-        email_cols = [c for c in df.columns if 'email' in c.lower() or 'correo' in c.lower()]
-        if not email_cols:
-            st.error("❌ No se encontró columna de correo electrónico")
-            return
+        # Detectar columna con datos (emails, URLs o dominios)
+        data_cols = []
+        for col in df.columns:
+            col_lower = col.lower()
+            if any(kw in col_lower for kw in ['email', 'correo', 'mail', 'url', 'website', 'web', 'site', 'domain', 'dominio', 'sitio', 'pagina']):
+                data_cols.append(col)
         
-        col_email = email_cols[0]
-        st.success(f"✅ Columna detectada: **{col_email}**")
+        # Si no encuentra, usar la primera columna
+        if not data_cols:
+            data_cols = [df.columns[0]]
+            st.warning(f"⚠️ Usando primera columna: **{data_cols[0]}**")
+        
+        col_data = data_cols[0]
+        st.success(f"✅ Columna detectada: **{col_data}**")
         
         df["_dominio"] = df[col_data].apply(extraer_dominio)
         dominios = [d for d in df["_dominio"].dropna().unique() if es_corporativo(d)]
