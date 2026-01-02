@@ -13,6 +13,13 @@ import concurrent.futures
 import io
 import os
 from functools import lru_cache
+
+# Cache en Neon (opcional, funciona sin él)
+try:
+    from db_cache import get_cached_dominios, save_to_cache, get_cache_stats, init_db
+    CACHE_AVAILABLE = True
+except ImportError:
+    CACHE_AVAILABLE = False
 from dataclasses import dataclass
 from typing import Optional, List, Dict, Tuple
 from enum import Enum
@@ -834,37 +841,69 @@ def resultado_a_df_resultados(r: ResultadoSuperficie) -> Dict:
     }
 
 
+DF_RESULT_COLUMNS = [
+    "dominio",
+    "postura_identidad",
+    "postura_exposicion",
+    "postura_general",
+    "correo_proveedor",
+    "correo_gateway",
+    "correo_envio",
+    "spf_estado",
+    "dmarc_estado",
+    "https_estado",
+    "cdn_waf",
+    "hsts",
+    "csp",
+    "dominio_antiguedad",
+]
+
+
 def analizar_dominios(dominios: List[str]) -> pd.DataFrame:
     if not dominios:
-        return pd.DataFrame(columns=[
-            "dominio",
-            "postura_identidad",
-            "postura_exposicion",
-            "postura_general",
-            "correo_proveedor",
-            "correo_gateway",
-            "correo_envio",
-            "spf_estado",
-            "dmarc_estado",
-            "https_estado",
-            "cdn_waf",
-            "hsts",
-            "csp",
-            "dominio_antiguedad",
-        ])
+        return pd.DataFrame(columns=DF_RESULT_COLUMNS)
 
-    resultados: List[ResultadoSuperficie] = []
-    with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
-        futuros = {executor.submit(analizar_dominio, d): d for d in dominios}
-        for futuro in concurrent.futures.as_completed(futuros):
-            try:
-                resultados.append(futuro.result())
-            except Exception as e:
-                dom = futuros[futuro]
-                st.warning(f"Fallo analizando {dom}: {e}")
-                continue
+    # 1) Intentar obtener del cache
+    df_cached = pd.DataFrame(columns=DF_RESULT_COLUMNS)
+    pendientes = list(dominios)
 
-    df_resultados = pd.DataFrame([resultado_a_df_resultados(r) for r in resultados])
+    if CACHE_AVAILABLE:
+        try:
+            df_cached, pendientes = get_cached_dominios(dominios)
+            if not df_cached.empty:
+                st.success(f"✅ {len(df_cached)} dominios desde cache (sin re-análisis)")
+        except Exception:
+            pass  # Continuar sin cache
+
+    # 2) Analizar solo los pendientes
+    df_nuevos = pd.DataFrame(columns=DF_RESULT_COLUMNS)
+    if pendientes:
+        if CACHE_AVAILABLE and not df_cached.empty:
+            st.info(f"🔍 Analizando {len(pendientes)} dominios nuevos...")
+
+        resultados: List[ResultadoSuperficie] = []
+        with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+            futuros = {executor.submit(analizar_dominio, d): d for d in pendientes}
+            for futuro in concurrent.futures.as_completed(futuros):
+                try:
+                    resultados.append(futuro.result())
+                except Exception as e:
+                    dom = futuros[futuro]
+                    st.warning(f"Fallo analizando {dom}: {e}")
+                    continue
+
+        if resultados:
+            df_nuevos = pd.DataFrame([resultado_a_df_resultados(r) for r in resultados])
+
+            # 3) Guardar nuevos en cache
+            if CACHE_AVAILABLE and not df_nuevos.empty:
+                try:
+                    save_to_cache(df_nuevos)
+                except Exception:
+                    pass  # No bloquear si falla el cache
+
+    # 4) Combinar cached + nuevos
+    df_resultados = pd.concat([df_cached, df_nuevos], ignore_index=True)
     if not df_resultados.empty:
         df_resultados = df_resultados.sort_values("dominio").reset_index(drop=True)
     return df_resultados
