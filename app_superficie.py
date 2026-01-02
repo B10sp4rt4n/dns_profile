@@ -16,7 +16,10 @@ from functools import lru_cache
 
 # Cache en Neon (opcional, funciona sin él)
 try:
-    from db_cache import get_cached_dominios, save_to_cache, get_cache_stats, init_db
+    from db_cache import (
+        get_cached_dominios, save_to_cache, get_cache_stats,
+        init_db, query_all_cached, get_single_domain
+    )
     CACHE_AVAILABLE = True
 except ImportError:
     CACHE_AVAILABLE = False
@@ -1016,26 +1019,128 @@ def main():
     st.set_page_config(layout="wide")
     st.title("🧠 Diagnóstico de Superficie Digital Corporativa")
 
-    archivo = st.file_uploader("Sube archivo CSV o Excel", type=["csv", "xlsx"])
-    if not archivo:
-        st.info("Carga un archivo para iniciar el diagnóstico")
-        return
+    # Tabs: Análisis masivo vs Consulta rápida
+    tab1, tab2, tab3 = st.tabs(["📁 Cargar archivo", "🔍 Dominio único", "📊 Reportes (cache)"])
 
-    try:
-        dominios = ingesta_archivo(archivo)
-    except Exception as e:
-        st.error("No se pudo leer el archivo. Verifica formato y contenido.")
-        st.caption(f"Detalle: {e}")
-        return
-    df_resultados = analizar_dominios(dominios)
+    with tab1:
+        archivo = st.file_uploader("Sube archivo CSV o Excel", type=["csv", "xlsx"])
+        if archivo:
+            try:
+                dominios = ingesta_archivo(archivo)
+            except Exception as e:
+                st.error("No se pudo leer el archivo. Verifica formato y contenido.")
+                st.caption(f"Detalle: {e}")
+                return
+            df_resultados = analizar_dominios(dominios)
 
-    if df_resultados.empty:
-        st.warning("No se pudieron analizar dominios válidos desde el CSV")
-        return
+            if df_resultados.empty:
+                st.warning("No se pudieron analizar dominios válidos desde el CSV")
+                return
 
-    vista_global(df_resultados)
-    vista_lista_explorable(df_resultados)
-    vista_dominio(df_resultados)
+            vista_global(df_resultados)
+            vista_lista_explorable(df_resultados)
+            vista_dominio(df_resultados)
+        else:
+            st.info("Carga un archivo para iniciar el diagnóstico")
+
+    with tab2:
+        st.markdown("### Consulta un dominio específico")
+        dominio_input = st.text_input("Dominio (ej: empresa.com)", key="single_domain")
+
+        if dominio_input:
+            dominio_limpio = extraer_dominio(dominio_input)
+            if not dominio_limpio:
+                st.error("Dominio no válido")
+            elif not es_corporativo(dominio_limpio):
+                st.warning("Ese es un dominio personal (Gmail, Hotmail, etc.)")
+            else:
+                # Primero buscar en cache
+                row_cached = None
+                if CACHE_AVAILABLE:
+                    row_cached = get_single_domain(dominio_limpio)
+
+                if row_cached is not None:
+                    st.success(f"✅ Resultado desde cache (sin re-análisis)")
+                    df_single = pd.DataFrame([row_cached])
+                else:
+                    with st.spinner(f"Analizando {dominio_limpio}..."):
+                        df_single = analizar_dominios([dominio_limpio])
+
+                if not df_single.empty:
+                    row = df_single.iloc[0]
+                    st.subheader(f"📌 {dominio_limpio}")
+
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.markdown("#### ✉️ Identidad (Correo)")
+                        st.metric("Postura", row.postura_identidad)
+                        st.write(f"**Proveedor:** {row.correo_proveedor}")
+                        st.write(f"**SPF:** {row.spf_estado}")
+                        st.write(f"**DMARC:** {row.dmarc_estado}")
+                        st.write(f"**Gateway:** {row.correo_gateway}")
+
+                    with col2:
+                        st.markdown("#### 🌐 Exposición (Web)")
+                        st.metric("Postura", row.postura_exposicion)
+                        st.write(f"**HTTPS:** {row.https_estado}")
+                        st.write(f"**CDN/WAF:** {row.cdn_waf}")
+                        st.write(f"**HSTS:** {'✅' if row.hsts else '❌'}")
+                        st.write(f"**CSP:** {'✅' if row.csp else '❌'}")
+
+                    st.markdown("#### ✅ Recomendaciones")
+                    for r in generar_recomendaciones_fila(row):
+                        st.write(f"- {r}")
+                else:
+                    st.error("No se pudo analizar el dominio")
+
+    with tab3:
+        if not CACHE_AVAILABLE:
+            st.warning("Cache no disponible. Configura DATABASE_URL en secrets.")
+        else:
+            stats = get_cache_stats()
+            if stats.get("connected"):
+                col1, col2, col3 = st.columns(3)
+                col1.metric("Total en cache", stats.get("total", 0))
+                col2.metric("Frescos (< 7 días)", stats.get("fresh", 0))
+                col3.metric("Vencidos", stats.get("stale", 0))
+
+                st.markdown("---")
+                st.markdown("### Filtros rápidos desde BD")
+
+                filtro_postura = st.selectbox(
+                    "Postura general",
+                    ["Todos", "Básica", "Intermedia", "Avanzada"]
+                )
+
+                filtros = {}
+                if filtro_postura != "Todos":
+                    filtros["postura_general"] = filtro_postura
+
+                if st.button("🔄 Cargar desde cache"):
+                    df_cache = query_all_cached(filtros if filtros else None)
+                    if df_cache.empty:
+                        st.info("No hay dominios en cache con esos filtros")
+                    else:
+                        st.success(f"✅ {len(df_cache)} dominios cargados desde cache")
+                        vista_global(df_cache)
+                        st.dataframe(
+                            df_cache[["dominio", "postura_general", "correo_proveedor", "cdn_waf"]],
+                            use_container_width=True,
+                            height=400,
+                            hide_index=True,
+                        )
+
+                        csv = df_cache.to_csv(index=False).encode("utf-8")
+                        st.download_button(
+                            "📥 Exportar reporte",
+                            csv,
+                            f"prospectscan_reporte_{datetime.now().strftime('%Y%m%d')}.csv",
+                            "text/csv"
+                        )
+            else:
+                st.error("No se pudo conectar a la BD")
+                if stats.get("error"):
+                    st.caption(stats.get("error"))
 
 
 if __name__ == "__main__":

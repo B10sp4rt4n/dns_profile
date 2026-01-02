@@ -273,3 +273,38 @@ def get_cache_stats() -> dict:
         return {"connected": False, "error": str(e)}
     finally:
         conn.close()
+
+
+def get_single_domain(dominio: str) -> Optional[pd.Series]:
+    """
+    Busca UN dominio en cache.
+    Retorna la fila como pd.Series si existe y no está vencido, None si no.
+    """
+    conn = _get_connection()
+    if not conn or not dominio:
+        return None
+
+    try:
+        cutoff = datetime.now() - timedelta(days=CACHE_TTL_DAYS)
+
+        query = """
+            SELECT dominio, postura_identidad, postura_exposicion, postura_general,
+                   correo_proveedor, correo_gateway, correo_envio, spf_estado,
+                   dmarc_estado, https_estado, cdn_waf, hsts, csp, dominio_antiguedad
+            FROM dominios_cache
+            WHERE dominio = %s
+              AND updated_at > %s
+        """
+
+        with conn.cursor() as cur:
+            cur.execute(query, (dominio.lower().strip(), cutoff))
+            row = cur.fetchone()
+
+        if row:
+            return pd.Series(dict(zip(DF_COLUMNS, row)))
+        return None
+
+    except Exception:
+        return None
+    finally:
+        conn.close()
