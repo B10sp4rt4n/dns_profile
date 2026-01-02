@@ -595,9 +595,9 @@ def main():
     # Value proposition
     with st.container():
         st.markdown("""
-        <div style="background-color: #f8f9fa; padding: 20px; border-radius: 10px; margin: 20px 0;">
-        <h3>🚀 Para equipos de ventas y partners de ciberseguridad</h3>
-        <p>Analiza la postura de seguridad de tus prospectos antes de la primera llamada. 
+        <div style="background-color: #2c3e50; padding: 20px; border-radius: 10px; margin: 20px 0; color: white;">
+        <h3 style="color: white;">🚀 Para equipos de ventas y partners de ciberseguridad</h3>
+        <p style="color: white;">Analiza la postura de seguridad de tus prospectos antes de la primera llamada. 
         Identifica gaps de correo y web que justifican tu solución.</p>
         </div>
         """, unsafe_allow_html=True)
