@@ -582,34 +582,71 @@ def es_corporativo(dominio: str) -> bool:
 # ============================================================================
 
 def main():
-    st.title("🛡️ Diagnóstico de Superficie Digital Corporativa")
-    st.markdown("**v1** — Análisis integral de Identidad y Exposición Digital")
+    # Header ejecutivo
+    st.set_page_config(page_title="Diagnóstico de Superficie Digital", page_icon="🎯", layout="wide")
+    
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        st.title("🎯 Diagnóstico de Superficie Digital Corporativa")
+        st.markdown("**Identifica oportunidades de seguridad en tus prospectos comerciales**")
+    with col2:
+        st.image("https://via.placeholder.com/150x80/4a90e2/ffffff?text=LOGO", width=150)
+    
+    # Value proposition
+    with st.container():
+        st.markdown("""
+        <div style="background-color: #f8f9fa; padding: 20px; border-radius: 10px; margin: 20px 0;">
+        <h3>🚀 Para equipos de ventas y partners de ciberseguridad</h3>
+        <p>Analiza la postura de seguridad de tus prospectos antes de la primera llamada. 
+        Identifica gaps de correo y web que justifican tu solución.</p>
+        </div>
+        """, unsafe_allow_html=True)
     
     st.markdown("---")
     
-    archivo = st.file_uploader(
-        "📁 Sube tu archivo CSV con correos electrónicos corporativos",
-        type="csv",
-        help="El archivo debe contener una columna con direcciones de correo"
-    )
+    # Upload mejorado
+    col1, col2 = st.columns([2, 1])
+    with col1:
+        archivo = st.file_uploader(
+            "📁 Sube tu lista de prospectos (CSV)",
+            type="csv",
+            help="CSV con columna de correos corporativos. Ej: ZoomInfo, LinkedIn, CRM export"
+        )
+    with col2:
+        st.markdown("**Ejemplos de uso:**")
+        st.markdown("• Lista de prospectos de LinkedIn")
+        st.markdown("• Exportación de CRM")
+        st.markdown("• Base de partners/resellers")
+        st.markdown("• Leads de marketing")
     
     if not archivo:
-        st.info("👆 Sube un archivo CSV para comenzar el diagnóstico")
+        st.info("👆 Sube tu lista de prospectos para identificar oportunidades")
         
-        with st.expander("ℹ️ ¿Qué evalúa este diagnóstico?"):
-            col1, col2 = st.columns(2)
-            with col1:
-                st.markdown("**🔐 Identidad Digital (Correo)**")
-                st.markdown("- Políticas SPF y DMARC")
-                st.markdown("- Vendors de correo")
-                st.markdown("- Gateways de seguridad")
-                st.markdown("- Servicios de envío")
-            with col2:
-                st.markdown("**🌐 Exposición Digital (Web)**")
-                st.markdown("- Configuración HTTPS")
-                st.markdown("- Headers de seguridad")
-                st.markdown("- CDN y WAF")
-                st.markdown("- Tecnología detectada")
+        # Demo interactivo
+        with st.expander("🚀 Ver ejemplo con dominios conocidos"):
+            if st.button("Analizar Amazon, Microsoft, Dropbox"):
+                demo_dominios = ["amazon.com", "microsoft.com", "dropbox.com"]
+                st.info("Ejecutando análisis demo...")
+                # Aquí podríamos hacer el análisis real para la demo
+        
+        # Value props
+        col1, col2 = st.columns(2)
+        with col1:
+            st.markdown("""
+            **🎯 Casos de uso:**
+            - Calificar leads antes de llamadas
+            - Priorizar prospectos por gaps de seguridad
+            - Preparar argumentos técnicos de venta
+            - Reportes para partners/resellers
+            """)
+        with col2:
+            st.markdown("""
+            **📊 Lo que obtienes:**
+            - Postura de seguridad por prospecto
+            - Vendors actuales detectados
+            - Gaps específicos identificados
+            - Recomendaciones comerciales
+            """)
         return
     
     try:
@@ -660,33 +697,91 @@ def main():
         
         # === RESUMEN EJECUTIVO ===
         st.markdown("---")
-        st.subheader("📋 Resumen Ejecutivo")
+        st.subheader("� Oportunidades Comerciales Identificadas")
         
-        # Métricas de postura general
-        posturas = df_ejecutivo["Superficie Digital"].value_counts()
-        c1, c2, c3 = st.columns(3)
-        c1.metric("🟢 Avanzada", posturas.get("Avanzada", 0))
-        c2.metric("🟡 Intermedia", posturas.get("Intermedia", 0))
-        c3.metric("🔴 Básica", posturas.get("Básica", 0))
+        # KPIs comerciales
+        total = len(resultados)
+        oportunidades = len([r for r in resultados if r.postura_general == Postura.BASICA])
+        sin_gateway = len([r for r in resultados if not r.identidad.vendors_seguridad])
+        sin_waf = len([r for r in resultados if not r.exposicion.cdn_waf])
         
-        # Métricas por dimensión
-        st.markdown("#### Por dimensión")
+        col1, col2, col3, col4 = st.columns(4)
+        col1.metric("🎯 Total analizados", total)
+        col2.metric("🔥 Postura básica", oportunidades, help="Prospectos con mayor potencial")
+        col3.metric("📧 Sin gateway email", sin_gateway, help="Oportunidad para seguridad de correo")
+        col4.metric("🌐 Sin WAF/CDN", sin_waf, help="Oportunidad para protección web")
+        
+        # Filtros ejecutivos
+        st.markdown("#### 🎯 Prioriza tus prospectos")
+        filtro = st.selectbox(
+            "Mostrar:",
+            ["Todos los dominios", "Solo postura básica (alta prioridad)", "Sin gateway de correo", "Sin protección web"],
+            help="Filtra para enfocarte en las mejores oportunidades"
+        )
+        
+        df_mostrar = df_ejecutivo.copy()
+        if filtro == "Solo postura básica (alta prioridad)":
+            df_mostrar = df_mostrar[df_mostrar["Superficie Digital"] == "Básica"]
+        elif filtro == "Sin gateway de correo":
+            df_mostrar = df_mostrar[df_mostrar["Seguridad Correo"] == "Sin gateway"]
+        elif filtro == "Sin protección web":
+            df_mostrar = df_mostrar[df_mostrar["CDN/WAF"] == "Sin protección"]
+        
+        # Tabla mejorada con colores
+        if not df_mostrar.empty:
+            st.dataframe(
+                df_mostrar.style.applymap(
+                    lambda x: 'background-color: #ffebee' if x == 'Básica' 
+                    else 'background-color: #fff3e0' if x == 'Intermedia'
+                    else 'background-color: #e8f5e8' if x == 'Avanzada'
+                    else '',
+                    subset=['Superficie Digital']
+                ),
+                use_container_width=True,
+                hide_index=True
+            )
+        else:
+            st.warning("No hay dominios que cumplan el filtro seleccionado")
+        
+        # Call to action
+        st.markdown("""
+        <div style="background-color: #e8f5e8; padding: 15px; border-radius: 5px; margin: 20px 0;">
+        💡 <strong>Próximo paso:</strong> Contacta los dominios con postura "Básica" - 
+        tienen los mayores gaps de seguridad y necesidad de tus soluciones.
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # Exportación comercial
         col1, col2 = st.columns(2)
-        
         with col1:
-            st.markdown("**🔐 Identidad Digital**")
-            id_posturas = df_ejecutivo["Postura Identidad"].value_counts()
-            st.write(f"Avanzada: {id_posturas.get('Avanzada', 0)} | Intermedia: {id_posturas.get('Intermedia', 0)} | Básica: {id_posturas.get('Básica', 0)}")
-        
+            csv_ej = df_ejecutivo.to_csv(index=False).encode("utf-8")
+            st.download_button(
+                "📥 Exportar Lista de Prospectos", 
+                csv_ej, 
+                f"oportunidades_comerciales_{datetime.now().strftime('%Y%m%d')}.csv", 
+                "text/csv",
+                help="CSV listo para importar a tu CRM"
+            )
         with col2:
-            st.markdown("**🌐 Exposición Digital**")
-            ex_posturas = df_ejecutivo["Postura Exposición"].value_counts()
-            st.write(f"Avanzada: {ex_posturas.get('Avanzada', 0)} | Intermedia: {ex_posturas.get('Intermedia', 0)} | Básica: {ex_posturas.get('Básica', 0)}")
-        
-        st.dataframe(df_ejecutivo, use_container_width=True, hide_index=True)
-        
-        csv_ej = df_ejecutivo.to_csv(index=False).encode("utf-8")
-        st.download_button("📥 Descargar Resumen Ejecutivo", csv_ej, "resumen_ejecutivo_superficie.csv", "text/csv")
+            # Template de email
+            template_email = """Hola [NOMBRE],
+
+Hice un análisis de seguridad de [DOMINIO] y encontré algunas oportunidades:
+
+• [GAPS_DETECTADOS]
+
+¿Tienes 15 minutos esta semana para revisar los hallazgos?
+
+Saludos,
+[TU_NOMBRE]"""
+            
+            st.download_button(
+                "📧 Template de Email", 
+                template_email.encode("utf-8"), 
+                "template_prospecting.txt", 
+                "text/plain",
+                help="Plantilla para contactar prospectos"
+            )
         
         # === ANEXO TÉCNICO ===
         st.markdown("---")
