@@ -913,13 +913,28 @@ def analizar_dominios(dominios: List[str]) -> pd.DataFrame:
 
 
 def vista_global(df: pd.DataFrame):
-    st.markdown("## 🌍 Resumen Global")
+    st.markdown("## 💼 Oportunidades Comerciales Identificadas")
+
+    total = len(df)
+    basica = int((df.postura_general == "Básica").sum())
+    sin_gateway = int((df.correo_gateway == "None").sum())
+    sin_waf = int((df.cdn_waf == "None").sum())
+    avanzada = int((df.postura_general == "Avanzada").sum())
+    sin_dmarc = int((df.dmarc_estado != "Reject").sum())
 
     with st.container():
-        col1, col2, col3 = st.columns(3)
-        col1.metric("Dominios", len(df))
-        col2.metric("Postura Básica", int((df.postura_general == "Básica").sum()))
-        col3.metric("Postura Avanzada", int((df.postura_general == "Avanzada").sum()))
+        col1, col2, col3, col4 = st.columns(4)
+        col1.metric("🎯 Total analizados", total)
+        col2.metric("🔥 Postura básica", basica, help="Prospectos con mayor potencial")
+        col3.metric("📧 Sin gateway email", sin_gateway, help="Oportunidad para seguridad de correo")
+        col4.metric("🌐 Sin WAF/CDN", sin_waf, help="Oportunidad para protección web")
+
+    with st.container():
+        col1, col2, col3, col4 = st.columns(4)
+        col1.metric("🟢 Postura avanzada", avanzada)
+        col2.metric("⚠️ Sin DMARC enforce", sin_dmarc, help="Vulnerables a spoofing")
+        col3.metric("📊 % Básica", f"{(basica/total*100):.0f}%" if total else "0%")
+        col4.metric("📊 % Sin protección web", f"{(sin_waf/total*100):.0f}%" if total else "0%")
 
 
 def aplicar_busqueda(df: pd.DataFrame, texto: str) -> pd.DataFrame:
