@@ -788,19 +788,17 @@ def main():
         elif filtro == "Sin protección web":
             df_mostrar = df_mostrar[df_mostrar["CDN/WAF"] == "Sin protección"]
         
-        # Tabla mejorada con colores
+        # Tabla con emojis para visibilidad
         if not df_mostrar.empty:
             st.dataframe(
-                df_mostrar.style.applymap(
-                    lambda x: 'background-color: #e74c3c; color: white; font-weight: bold' if x == 'Básica' 
-                    else 'background-color: #f39c12; color: white; font-weight: bold' if x == 'Intermedia'
-                    else 'background-color: #27ae60; color: white; font-weight: bold' if x == 'Avanzada'
-                    else '',
-                    subset=['Superficie Digital']
-                ),
-                use_container_width=True,
-                hide_index=True
+            df_display = df_mostrar.copy()
+            df_display['Superficie Digital'] = df_display['Superficie Digital'].apply(
+                lambda x: f"🔴 {x}" if x == 'Básica'
+                else f"🟡 {x}" if x == 'Intermedia'
+                else f"🟢 {x}" if x == 'Avanzada'
+                else x
             )
+            st.dataframe(df_display, use_container_width=True, hide_index=True)
         else:
             st.warning("No hay dominios que cumplan el filtro seleccionado")
         
