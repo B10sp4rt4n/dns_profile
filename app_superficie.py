@@ -932,7 +932,7 @@ def vista_lista_explorable(df: pd.DataFrame):
     st.session_state["dominio_activo"] = dominio
 
 
-def generar_recomendaciones(row: pd.Series) -> List[str]:
+def generar_recomendaciones_fila(row: pd.Series) -> List[str]:
     recs: List[str] = []
 
     if row.get("dmarc_estado") != "Reject":
@@ -969,7 +969,7 @@ def vista_dominio(df: pd.DataFrame):
     st.write(row.https_estado, row.cdn_waf)
 
     st.markdown("### ✅ Recomendaciones")
-    for r in generar_recomendaciones(row):
+    for r in generar_recomendaciones_fila(row):
         st.write(f"- {r}")
 
 
