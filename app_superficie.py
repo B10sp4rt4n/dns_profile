@@ -167,37 +167,58 @@ class ResultadoSuperficie:
 
 @lru_cache(maxsize=1024)
 def obtener_mx(dominio: str) -> List[str]:
+    """Obtiene registros MX del dominio."""
     try:
         resp = dns.resolver.resolve(dominio, 'MX', lifetime=DNS_TIMEOUT)
         return [r.exchange.to_text().rstrip('.').lower() for r in resp]
+    except dns.resolver.NXDOMAIN:
+        return []  # Dominio no existe
+    except dns.resolver.NoAnswer:
+        return []  # Sin registros MX
+    except dns.resolver.Timeout:
+        return []  # Timeout
     except Exception:
         return []
 
 
 @lru_cache(maxsize=1024)
 def obtener_spf(dominio: str) -> str:
+    """Obtiene registro SPF del dominio."""
     try:
         resp = dns.resolver.resolve(dominio, 'TXT', lifetime=DNS_TIMEOUT)
         for r in resp:
             txt = b''.join(r.strings).decode()
             if "v=spf1" in txt.lower():
                 return txt
+        return ""  # Hay TXT pero no SPF
+    except dns.resolver.NXDOMAIN:
+        return ""  # Dominio no existe
+    except dns.resolver.NoAnswer:
+        return ""  # Sin registros TXT
+    except dns.resolver.Timeout:
+        return ""  # Timeout
     except Exception:
-        pass
-    return ""
+        return ""
 
 
 @lru_cache(maxsize=1024)
 def obtener_dmarc(dominio: str) -> str:
+    """Obtiene registro DMARC del dominio."""
     try:
         resp = dns.resolver.resolve(f"_dmarc.{dominio}", 'TXT', lifetime=DNS_TIMEOUT)
         for r in resp:
             txt = b''.join(r.strings).decode()
             if "v=DMARC1" in txt.upper():
                 return txt
+        return ""  # Registro existe pero no es DMARC válido
+    except dns.resolver.NXDOMAIN:
+        return ""  # No existe _dmarc.dominio
+    except dns.resolver.NoAnswer:
+        return ""  # Sin registros TXT
+    except dns.resolver.Timeout:
+        return ""  # Timeout
     except Exception:
-        pass
-    return ""
+        return ""
 
 
 def evaluar_spf(spf: str) -> EstadoSPF:
