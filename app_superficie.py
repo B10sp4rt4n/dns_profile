@@ -15,6 +15,7 @@ import os
 from functools import lru_cache
 
 # Cache en Neon (opcional, funciona sin él)
+import contextlib
 try:
     from db_cache import (
         get_cached_dominios, save_to_cache, get_cache_stats,
@@ -315,7 +316,10 @@ def hacer_request(dominio: str) -> Optional[requests.Response]:
                 timeout=REQUEST_TIMEOUT,
                 headers=headers,
                 allow_redirects=True,
-                verify=(proto == "https")
+                # Importante: si empezamos en http y redirige a https,
+                # requests hereda verify. Dejamos verify=True para evitar
+                # InsecureRequestWarning en redirects.
+                verify=True,
             )
         except Exception:
             continue
@@ -746,7 +750,10 @@ def ingesta_archivo(archivo) -> List[str]:
 @lru_cache(maxsize=512)
 def obtener_fecha_creacion_dominio(dominio: str) -> Optional[datetime]:
     try:
-        w = whois.whois(dominio)
+        # python-whois puede imprimir errores de socket a stdout/stderr.
+        # Silenciamos para no ensuciar logs/UI.
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            w = whois.whois(dominio)
         created = w.creation_date
         if isinstance(created, list):
             created = min([d for d in created if isinstance(d, datetime)], default=None)
