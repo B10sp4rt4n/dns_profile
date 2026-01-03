@@ -1640,23 +1640,29 @@ def main():
                 st.markdown("---")
 
                 # Filtro y carga
-                with st.expander("🔧 Filtros para cargar", expanded=False):
-                    filtro_postura = st.selectbox(
-                        "Postura general",
-                        ["Todos", "Básica", "Intermedia", "Avanzada"]
-                    )
-                    filtros = {}
-                    if filtro_postura != "Todos":
-                        filtros["postura_general"] = filtro_postura
+                filtro_postura = st.selectbox(
+                    "Filtrar por postura",
+                    ["Todos", "Básica", "Intermedia", "Avanzada"],
+                    key="tab3_filtro_postura"
+                )
+                
+                filtros = {}
+                if filtro_postura != "Todos":
+                    filtros["postura_general"] = filtro_postura
 
-                col_btn1, col_btn2 = st.columns([1, 4])
-                with col_btn1:
-                    cargar_cache = st.button("🔄 Cargar datos", type="primary")
+                cargar_cache = st.button("🔄 Cargar datos del cache", type="primary", key="btn_cargar_cache")
 
+                # Guardar en session_state para persistir después del rerun
                 if cargar_cache:
                     with st.spinner("Cargando datos del cache..."):
                         df_cache = query_all_cached(filtros if filtros else None)
+                        st.session_state["df_cache_tab3"] = df_cache
+                        st.session_state["cache_loaded"] = True
 
+                # Mostrar si hay datos cargados
+                if st.session_state.get("cache_loaded") and "df_cache_tab3" in st.session_state:
+                    df_cache = st.session_state["df_cache_tab3"]
+                    
                     if df_cache.empty:
                         st.info("No hay dominios en cache con esos filtros")
                     else:
