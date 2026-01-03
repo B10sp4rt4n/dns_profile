@@ -1138,11 +1138,11 @@ def vista_global(df: pd.DataFrame):
     st.markdown("## 💼 Oportunidades Comerciales Identificadas")
 
     total = len(df)
-    basica = int((df.postura_general == "Básica").sum())
-    sin_gateway = int((df.correo_gateway == "None").sum())
-    sin_waf = int((df.cdn_waf == "None").sum())
-    avanzada = int((df.postura_general == "Avanzada").sum())
-    sin_dmarc = int((df.dmarc_estado != "Reject").sum())
+    basica = int((df["postura_general"] == "Básica").sum())
+    sin_gateway = int((df["correo_gateway"] == "None").sum())
+    sin_waf = int((df["cdn_waf"] == "None").sum())
+    avanzada = int((df["postura_general"] == "Avanzada").sum())
+    sin_dmarc = int((df["dmarc_estado"] != "Reject").sum())
     
     # Score promedio si existe la columna
     score_promedio = df["score"].mean() if "score" in df.columns else 0
@@ -1284,23 +1284,30 @@ def vista_lista_explorable(df: pd.DataFrame):
             st.session_state["dominios_comparar"] = comparar
 
 
-def generar_recomendaciones_fila(row: pd.Series) -> List[str]:
+def generar_recomendaciones_fila(row) -> List[str]:
+    """Genera recomendaciones basadas en los valores del dominio."""
     recs: List[str] = []
+    
+    # Convertir a dict si es Series para acceso uniforme
+    if hasattr(row, 'to_dict'):
+        r = row.to_dict()
+    else:
+        r = dict(row) if not isinstance(row, dict) else row
 
-    if row.get("dmarc_estado") != "Reject":
+    if r.get("dmarc_estado") != "Reject":
         recs.append("Activar DMARC en modo Quarantine/Reject para proteger la identidad del dominio.")
-    if row.get("spf_estado") != "OK":
+    if r.get("spf_estado") != "OK":
         recs.append("Corregir y endurecer SPF para reducir suplantación de remitentes.")
-    if row.get("correo_gateway") == "None":
+    if r.get("correo_gateway") == "None" or not r.get("correo_gateway"):
         recs.append("Evaluar un gateway de seguridad de correo (ej. Proofpoint/Mimecast).")
 
-    if row.get("https_estado") != "Forzado":
+    if r.get("https_estado") != "Forzado":
         recs.append("Forzar HTTPS en todo el sitio para evitar downgrade y tráfico inseguro.")
-    if not bool(row.get("hsts")):
+    if not r.get("hsts"):
         recs.append("Habilitar HSTS para reforzar HTTPS.")
-    if not bool(row.get("csp")):
+    if not r.get("csp"):
         recs.append("Implementar CSP para mitigar inyección de scripts.")
-    if row.get("cdn_waf") == "None":
+    if r.get("cdn_waf") == "None" or not r.get("cdn_waf"):
         recs.append("Considerar CDN/WAF (ej. Cloudflare/Akamai) para protección web.")
 
     return recs
@@ -1316,13 +1323,13 @@ def vista_comparativa(df: pd.DataFrame):
     
     cols = st.columns(len(dominios))
     for i, dom in enumerate(dominios):
-        row = df[df.dominio == dom]
+        row = df[df["dominio"] == dom]
         if row.empty:
             continue
         row = row.iloc[0]
         
         with cols[i]:
-            score = row.get("score", 0)
+            score = int(row["score"]) if "score" in df.columns and pd.notna(row["score"]) else 0
             emoji = get_score_emoji(score)
             st.markdown(f"#### {emoji} {dom}")
             st.metric("Score", f"{score}/100")
@@ -1331,13 +1338,13 @@ def vista_comparativa(df: pd.DataFrame):
             st.progress(score / 100)
             
             st.caption("**Identidad**")
-            st.write(f"📧 {row.correo_proveedor}")
-            st.write(f"SPF: {'✅' if row.spf_estado == 'OK' else '❌'}")
-            st.write(f"DMARC: {'✅' if row.dmarc_estado == 'Reject' else '⚠️' if row.dmarc_estado == 'Quarantine' else '❌'}")
+            st.write(f"📧 {row['correo_proveedor']}")
+            st.write(f"SPF: {'✅' if row['spf_estado'] == 'OK' else '❌'}")
+            st.write(f"DMARC: {'✅' if row['dmarc_estado'] == 'Reject' else '⚠️' if row['dmarc_estado'] == 'Quarantine' else '❌'}")
             
             st.caption("**Exposición**")
-            st.write(f"HTTPS: {'✅' if row.https_estado == 'Forzado' else '❌'}")
-            st.write(f"CDN/WAF: {row.cdn_waf if row.cdn_waf != 'None' else '❌'}")
+            st.write(f"HTTPS: {'✅' if row['https_estado'] == 'Forzado' else '❌'}")
+            st.write(f"CDN/WAF: {row['cdn_waf'] if row['cdn_waf'] != 'None' else '❌'}")
     
     st.markdown("---")
 
@@ -1350,13 +1357,13 @@ def vista_dominio(df: pd.DataFrame):
     if not dominio:
         return
 
-    row = df[df.dominio == dominio]
+    row = df[df["dominio"] == dominio]
     if row.empty:
         return
     row = row.iloc[0]
     
     # Encabezado con score visual
-    score = row.get("score", 0) if "score" in df.columns else calcular_score_seguridad(row.to_dict())
+    score = int(row["score"]) if "score" in df.columns and pd.notna(row["score"]) else calcular_score_seguridad(row.to_dict())
     emoji = get_score_emoji(score)
     
     st.markdown(f"### {emoji} Detalle: **{dominio}**")
@@ -1377,8 +1384,8 @@ def vista_dominio(df: pd.DataFrame):
         st.markdown(f"""
         | Aspecto | Valor |
         |---------|-------|
-        | **Postura General** | {row.postura_general} |
-        | **Antigüedad** | {row.dominio_antiguedad} |
+        | **Postura General** | {row['postura_general']} |
+        | **Antigüedad** | {row['dominio_antiguedad']} |
         """)
 
     # Detalles en dos columnas
@@ -1386,18 +1393,18 @@ def vista_dominio(df: pd.DataFrame):
     
     with col1:
         st.markdown("#### ✉️ Identidad Digital (Correo)")
-        st.write(f"**Proveedor:** {row.correo_proveedor}")
-        st.write(f"**SPF:** {'✅ ' + row.spf_estado if row.spf_estado == 'OK' else '❌ ' + row.spf_estado}")
-        st.write(f"**DMARC:** {'✅ ' if row.dmarc_estado == 'Reject' else '⚠️ ' if row.dmarc_estado == 'Quarantine' else '❌ '}{row.dmarc_estado}")
-        st.write(f"**Gateway:** {row.correo_gateway if row.correo_gateway != 'None' else '❌ Sin gateway'}")
-        st.write(f"**Envío:** {row.correo_envio if row.correo_envio != 'None' else '—'}")
+        st.write(f"**Proveedor:** {row['correo_proveedor']}")
+        st.write(f"**SPF:** {'✅ ' + str(row['spf_estado']) if row['spf_estado'] == 'OK' else '❌ ' + str(row['spf_estado'])}")
+        st.write(f"**DMARC:** {'✅ ' if row['dmarc_estado'] == 'Reject' else '⚠️ ' if row['dmarc_estado'] == 'Quarantine' else '❌ '}{row['dmarc_estado']}")
+        st.write(f"**Gateway:** {row['correo_gateway'] if row['correo_gateway'] != 'None' else '❌ Sin gateway'}")
+        st.write(f"**Envío:** {row['correo_envio'] if row['correo_envio'] != 'None' else '—'}")
 
     with col2:
         st.markdown("#### 🌐 Exposición Digital (Web)")
-        st.write(f"**HTTPS:** {'✅ ' if row.https_estado == 'Forzado' else '⚠️ ' if row.https_estado == 'Parcial' else '❌ '}{row.https_estado}")
-        st.write(f"**CDN/WAF:** {row.cdn_waf if row.cdn_waf != 'None' else '❌ Sin protección'}")
-        st.write(f"**HSTS:** {'✅ Activo' if row.hsts else '❌ Ausente'}")
-        st.write(f"**CSP:** {'✅ Activo' if row.csp else '❌ Ausente'}")
+        st.write(f"**HTTPS:** {'✅ ' if row['https_estado'] == 'Forzado' else '⚠️ ' if row['https_estado'] == 'Parcial' else '❌ '}{row['https_estado']}")
+        st.write(f"**CDN/WAF:** {row['cdn_waf'] if row['cdn_waf'] != 'None' else '❌ Sin protección'}")
+        st.write(f"**HSTS:** {'✅ Activo' if row['hsts'] else '❌ Ausente'}")
+        st.write(f"**CSP:** {'✅ Activo' if row['csp'] else '❌ Ausente'}")
 
     # Recomendaciones
     recs = generar_recomendaciones_fila(row)
@@ -1560,7 +1567,7 @@ def main():
                     row = df_single.iloc[0]
                     
                     # Score visual prominente
-                    score = row.get("score", 0) if "score" in df_single.columns else calcular_score_seguridad(row.to_dict())
+                    score = int(row["score"]) if "score" in df_single.columns and pd.notna(row["score"]) else calcular_score_seguridad(row.to_dict())
                     emoji = get_score_emoji(score)
                     
                     st.markdown(f"### {emoji} **{dominio_limpio}**")
@@ -1580,24 +1587,24 @@ def main():
                             st.success("✅ Buena postura")
                     
                     with col_postura:
-                        st.metric("Postura General", row.postura_general)
-                        st.caption(f"Identidad: {row.postura_identidad} | Exposición: {row.postura_exposicion}")
+                        st.metric("Postura General", row["postura_general"])
+                        st.caption(f"Identidad: {row['postura_identidad']} | Exposición: {row['postura_exposicion']}")
 
                     st.markdown("---")
                     col1, col2 = st.columns(2)
                     with col1:
                         st.markdown("#### ✉️ Identidad (Correo)")
-                        st.write(f"**Proveedor:** {row.correo_proveedor}")
-                        st.write(f"**SPF:** {'✅ ' if row.spf_estado == 'OK' else '❌ '}{row.spf_estado}")
-                        st.write(f"**DMARC:** {'✅ ' if row.dmarc_estado == 'Reject' else '⚠️ ' if row.dmarc_estado == 'Quarantine' else '❌ '}{row.dmarc_estado}")
-                        st.write(f"**Gateway:** {row.correo_gateway if row.correo_gateway != 'None' else '❌ Sin gateway'}")
+                        st.write(f"**Proveedor:** {row['correo_proveedor']}")
+                        st.write(f"**SPF:** {'✅ ' if row['spf_estado'] == 'OK' else '❌ '}{row['spf_estado']}")
+                        st.write(f"**DMARC:** {'✅ ' if row['dmarc_estado'] == 'Reject' else '⚠️ ' if row['dmarc_estado'] == 'Quarantine' else '❌ '}{row['dmarc_estado']}")
+                        st.write(f"**Gateway:** {row['correo_gateway'] if row['correo_gateway'] != 'None' else '❌ Sin gateway'}")
 
                     with col2:
                         st.markdown("#### 🌐 Exposición (Web)")
-                        st.write(f"**HTTPS:** {'✅ ' if row.https_estado == 'Forzado' else '❌ '}{row.https_estado}")
-                        st.write(f"**CDN/WAF:** {row.cdn_waf if row.cdn_waf != 'None' else '❌ Sin protección'}")
-                        st.write(f"**HSTS:** {'✅ Activo' if row.hsts else '❌ Ausente'}")
-                        st.write(f"**CSP:** {'✅ Activo' if row.csp else '❌ Ausente'}")
+                        st.write(f"**HTTPS:** {'✅ ' if row['https_estado'] == 'Forzado' else '❌ '}{row['https_estado']}")
+                        st.write(f"**CDN/WAF:** {row['cdn_waf'] if row['cdn_waf'] != 'None' else '❌ Sin protección'}")
+                        st.write(f"**HSTS:** {'✅ Activo' if row['hsts'] else '❌ Ausente'}")
+                        st.write(f"**CSP:** {'✅ Activo' if row['csp'] else '❌ Ausente'}")
 
                     # Recomendaciones
                     recs = generar_recomendaciones_fila(row)
