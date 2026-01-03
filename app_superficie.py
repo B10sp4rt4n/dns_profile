@@ -990,7 +990,7 @@ def vista_lista_explorable(df: pd.DataFrame):
 
     st.dataframe(
         df_filtrado[["dominio", "postura_general", "correo_proveedor", "cdn_waf"]],
-        use_container_width=True,
+        width="stretch",
         hide_index=True,
         height=400,
     )
@@ -1201,7 +1201,7 @@ def main():
                         vista_global(df_cache)
                         st.dataframe(
                             df_cache[["dominio", "postura_general", "correo_proveedor", "cdn_waf"]],
-                            use_container_width=True,
+                            width="stretch",
                             height=400,
                             hide_index=True,
                         )
