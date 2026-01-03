@@ -7,6 +7,7 @@ import pandas as pd
 import streamlit as st
 import re
 import requests
+import dns.resolver
 import concurrent.futures
 from functools import lru_cache
 from dataclasses import dataclass
@@ -20,6 +21,7 @@ from urllib.parse import urlparse
 
 st.set_page_config(page_title="ProspectScan - Web", page_icon="🌐", layout="wide")
 
+DNS_TIMEOUT = 5
 REQUEST_TIMEOUT = 10
 MAX_WORKERS = 10
 DOMINIOS_PERSONALES = frozenset([
@@ -32,6 +34,19 @@ class EstadoHeader(Enum):
     PRESENTE = "Presente"
     AUSENTE = "Ausente"
     DEBIL = "Débil"
+
+
+class EstadoSPF(Enum):
+    OK = "OK"
+    DEBIL = "Débil"
+    AUSENTE = "Ausente"
+
+
+class EstadoDMARC(Enum):
+    REJECT = "Reject"
+    QUARANTINE = "Quarantine"
+    NONE = "None"
+    AUSENTE = "Ausente"
 
 
 class EstadoHTTPS(Enum):
@@ -98,6 +113,14 @@ class HeadersSeguridad:
 
 
 @dataclass
+class ResultadoDNS:
+    spf_raw: str
+    estado_spf: EstadoSPF
+    dmarc_raw: str
+    estado_dmarc: EstadoDMARC
+
+
+@dataclass
 class ResultadoAnalisis:
     dominio: str
     https: EstadoHTTPS
@@ -105,12 +128,96 @@ class ResultadoAnalisis:
     tecnologia: Optional[str]
     cdn_waf: Optional[str]
     headers: HeadersSeguridad
+    dns: ResultadoDNS
     postura: PosturaGeneral
     error: Optional[str]
 
 
 # ============================================================================
-# FUNCIONES DE ANÁLISIS
+# FUNCIONES DNS (SPF y DMARC)
+# ============================================================================
+
+@lru_cache(maxsize=1024)
+def obtener_spf(dominio: str) -> str:
+    """Obtiene registro SPF del dominio."""
+    try:
+        resp = dns.resolver.resolve(dominio, 'TXT', lifetime=DNS_TIMEOUT)
+        for r in resp:
+            txt = b''.join(r.strings).decode()
+            if "v=spf1" in txt.lower():
+                return txt
+        return ""
+    except dns.resolver.NXDOMAIN:
+        return ""
+    except dns.resolver.NoAnswer:
+        return ""
+    except dns.resolver.Timeout:
+        return ""
+    except Exception:
+        return ""
+
+
+@lru_cache(maxsize=1024)
+def obtener_dmarc(dominio: str) -> str:
+    """Obtiene registro DMARC del dominio."""
+    try:
+        resp = dns.resolver.resolve(f"_dmarc.{dominio}", 'TXT', lifetime=DNS_TIMEOUT)
+        for r in resp:
+            txt = b''.join(r.strings).decode()
+            if "v=dmarc1" in txt.lower():
+                return txt
+        return ""
+    except dns.resolver.NXDOMAIN:
+        return ""
+    except dns.resolver.NoAnswer:
+        return ""
+    except dns.resolver.Timeout:
+        return ""
+    except Exception:
+        return ""
+
+
+def evaluar_spf(spf: str) -> EstadoSPF:
+    """Evalúa la política SPF."""
+    if not spf:
+        return EstadoSPF.AUSENTE
+    spf_lower = spf.lower()
+    if "+all" in spf_lower or "?all" in spf_lower:
+        return EstadoSPF.DEBIL
+    if "~all" not in spf_lower and "-all" not in spf_lower:
+        return EstadoSPF.DEBIL
+    return EstadoSPF.OK
+
+
+def evaluar_dmarc(dmarc: str) -> EstadoDMARC:
+    """Evalúa la política DMARC."""
+    if not dmarc:
+        return EstadoDMARC.AUSENTE
+    dmarc_lower = dmarc.lower()
+    if "p=reject" in dmarc_lower:
+        return EstadoDMARC.REJECT
+    if "p=quarantine" in dmarc_lower:
+        return EstadoDMARC.QUARANTINE
+    if "p=none" in dmarc_lower:
+        return EstadoDMARC.NONE
+    return EstadoDMARC.AUSENTE
+
+
+def analizar_dns(dominio: str) -> ResultadoDNS:
+    """Analiza los registros DNS de correo del dominio."""
+    spf = obtener_spf(dominio)
+    dmarc = obtener_dmarc(dominio)
+    
+    return ResultadoDNS(
+        spf_raw=spf or "No encontrado",
+        estado_spf=evaluar_spf(spf),
+        dmarc_raw=dmarc or "Registro DMARC no encontrado",
+        estado_dmarc=evaluar_dmarc(dmarc)
+    )
+
+
+# ============================================================================
+# FUNCIONES DE ANÁLISIS HTTP
 # ============================================================================
 
 def hacer_request(dominio: str) -> Optional[requests.Response]:
@@ -340,6 +447,9 @@ def analizar_dominio(dominio: str) -> ResultadoAnalisis:
     # Evaluar HTTPS
     estado_https = evaluar_https(dominio)
     
+    # Analizar DNS (SPF y DMARC)
+    dns_resultado = analizar_dns(dominio)
+    
     # Hacer request para obtener headers
     resp = hacer_request(dominio)
     
@@ -358,6 +468,7 @@ def analizar_dominio(dominio: str) -> ResultadoAnalisis:
                 x_xss_protection=EstadoHeader.AUSENTE,
                 referrer_policy=EstadoHeader.AUSENTE
             ),
+            dns=dns_resultado,
             postura=PosturaGeneral.BASICA,
             error="No se pudo conectar"
         )
@@ -382,6 +493,7 @@ def analizar_dominio(dominio: str) -> ResultadoAnalisis:
         tecnologia=tecnologia,
         cdn_waf=cdn_waf,
         headers=headers_seg,
+        dns=dns_resultado,
         postura=postura,
         error=None
     )
@@ -391,6 +503,8 @@ def resultado_a_dict_tecnico(resultado: ResultadoAnalisis) -> Dict:
     """Convierte resultado a diccionario para DataFrame técnico."""
     return {
         "Dominio": resultado.dominio,
+        "SPF": resultado.dns.spf_raw,
+        "DMARC": resultado.dns.dmarc_raw,
         "HTTPS": resultado.https.value,
         "Servidor": resultado.servidor or "No detectado",
         "Tecnología": resultado.tecnologia or "No detectada",
@@ -412,6 +526,8 @@ def resultado_a_dict_ejecutivo(resultado: ResultadoAnalisis) -> Dict:
     """Convierte resultado a diccionario para resumen ejecutivo."""
     return {
         "Dominio": resultado.dominio,
+        "SPF": resultado.dns.estado_spf.value,
+        "DMARC": resultado.dns.estado_dmarc.value,
         "HTTPS": resultado.https.value,
         "Servidor": resultado.servidor or "-",
         "CDN/WAF": resultado.cdn_waf or "Sin protección",
@@ -533,24 +649,43 @@ def main():
         st.subheader("📋 Resumen Ejecutivo")
         
         # Métricas de postura
+        st.markdown("#### 🎯 Postura General")
         posturas = df_ejecutivo["Postura"].value_counts()
         col1, col2, col3 = st.columns(3)
         col1.metric("🟢 Avanzada", posturas.get("Avanzada", 0))
         col2.metric("🟡 Intermedia", posturas.get("Intermedia", 0))
         col3.metric("🔴 Básica", posturas.get("Básica", 0))
         
+        # Métricas de Identidad (SPF/DMARC)
+        st.markdown("#### 📧 Seguridad de Correo (SPF/DMARC)")
+        col1, col2, col3, col4 = st.columns(4)
+        
+        spf_counts = df_ejecutivo["SPF"].value_counts()
+        col1.metric("✅ SPF OK", spf_counts.get("OK", 0))
+        col2.metric("⚠️ SPF Débil", spf_counts.get("Débil", 0))
+        col3.metric("❌ SPF Ausente", spf_counts.get("Ausente", 0))
+        
+        dmarc_counts = df_ejecutivo["DMARC"].value_counts()
+        col1, col2, col3, col4 = st.columns(4)
+        col1.metric("🛡️ DMARC Reject", dmarc_counts.get("Reject", 0))
+        col2.metric("⚠️ DMARC Quarantine", dmarc_counts.get("Quarantine", 0))
+        col3.metric("📝 DMARC None", dmarc_counts.get("None", 0))
+        col4.metric("❌ DMARC Ausente", dmarc_counts.get("Ausente", 0))
+        
         # Métricas de HTTPS
-        st.markdown("#### Estado HTTPS")
+        st.markdown("#### 🔒 Estado HTTPS")
         https_counts = df_ejecutivo["HTTPS"].value_counts()
         col1, col2, col3 = st.columns(3)
         col1.metric("🔒 Forzado", https_counts.get("Forzado", 0))
         col2.metric("🔓 Disponible", https_counts.get("Disponible", 0))
         col3.metric("❌ No disponible", https_counts.get("No disponible", 0))
         
+        st.markdown("#### 📊 Tabla Resumen")
         st.dataframe(
             df_ejecutivo,
             use_container_width=True,
-            hide_index=True
+            hide_index=True,
+            height=400
         )
         
         csv_ejecutivo = df_ejecutivo.to_csv(index=False).encode("utf-8")
@@ -565,12 +700,23 @@ def main():
         st.markdown("---")
         st.subheader("🔧 Diagnóstico Técnico Completo")
         
-        with st.expander("Ver diagnóstico técnico detallado"):
-            st.dataframe(
-                df_tecnico,
-                use_container_width=True,
-                hide_index=True
-            )
+        # Configuración de columnas para mejor visualización
+        column_config = {
+            "Dominio": st.column_config.TextColumn("Dominio", width="medium"),
+            "SPF": st.column_config.TextColumn("SPF", width="large"),
+            "DMARC": st.column_config.TextColumn("DMARC", width="large"),
+            "HTTPS": st.column_config.TextColumn("HTTPS", width="small"),
+            "Servidor": st.column_config.TextColumn("Servidor", width="small"),
+            "CDN/WAF": st.column_config.TextColumn("CDN/WAF", width="medium"),
+        }
+        
+        st.dataframe(
+            df_tecnico,
+            use_container_width=True,
+            hide_index=True,
+            height=500,
+            column_config=column_config
+        )
         
         csv_tecnico = df_tecnico.to_csv(index=False).encode("utf-8")
         st.download_button(

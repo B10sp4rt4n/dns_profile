@@ -208,7 +208,7 @@ def obtener_dmarc(dominio: str) -> str:
         resp = dns.resolver.resolve(f"_dmarc.{dominio}", 'TXT', lifetime=DNS_TIMEOUT)
         for r in resp:
             txt = b''.join(r.strings).decode()
-            if "v=DMARC1" in txt.upper():
+            if "v=dmarc1" in txt.lower():
                 return txt
         return ""  # Registro existe pero no es DMARC válido
     except dns.resolver.NXDOMAIN:
@@ -884,7 +884,9 @@ def map_dmarc_estado(estado: EstadoDMARC) -> str:
         return "Reject"
     if estado == EstadoDMARC.QUARANTINE:
         return "Quarantine"
-    return "None"
+    if estado == EstadoDMARC.NONE:
+        return "None"
+    return "Ausente"
 
 
 def map_https_estado(estado: EstadoHTTPS) -> str:
@@ -1057,7 +1059,7 @@ def generar_graficos_cache(df: pd.DataFrame):
         total = len(df)
         adopcion = {
             "SPF configurado": (df["spf_estado"] != "Ausente").sum(),
-            "DMARC activo": (df["dmarc_estado"] == "Reject").sum(),
+            "DMARC activo": (df["dmarc_estado"] != "Ausente").sum(),
             "HTTPS forzado": (df["https_estado"] == "Forzado").sum(),
             "HSTS activo": df["hsts"].sum() if "hsts" in df.columns else 0,
             "CDN/WAF": (df["cdn_waf"] != "None").sum(),
