@@ -978,7 +978,7 @@ def generar_graficos_cache(df: pd.DataFrame):
             "SPF configurado": (df["spf_estado"] != "Ausente").sum(),
             "DMARC activo": (df["dmarc_estado"] == "Reject").sum(),
             "HTTPS forzado": (df["https_estado"] == "Forzado").sum(),
-            "HSTS activo": (df["hsts_estado"] == "Presente").sum(),
+            "HSTS activo": df["hsts"].sum() if "hsts" in df.columns else 0,
             "CDN/WAF": (df["cdn_waf"] != "None").sum(),
         }
         adopcion_df = pd.DataFrame([
