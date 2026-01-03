@@ -65,7 +65,11 @@ def _get_connection():
     # Intentar desde Streamlit secrets primero
     db_url = None
     try:
-        db_url = st.secrets.get("DATABASE_URL") or st.secrets.get("NEON_DATABASE_URL")
+        # Streamlit secrets se accede como diccionario o atributo
+        if "DATABASE_URL" in st.secrets:
+            db_url = st.secrets["DATABASE_URL"]
+        elif "NEON_DATABASE_URL" in st.secrets:
+            db_url = st.secrets["NEON_DATABASE_URL"]
     except Exception:
         pass
 
@@ -77,7 +81,7 @@ def _get_connection():
         return None
 
     try:
-        return psycopg2.connect(db_url, connect_timeout=5)
+        return psycopg2.connect(db_url, connect_timeout=10)
     except Exception as e:
         st.warning(f"No se pudo conectar a Neon: {e}")
         return None

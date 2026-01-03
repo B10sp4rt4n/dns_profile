@@ -13,6 +13,8 @@ import concurrent.futures
 import io
 import os
 from functools import lru_cache
+import plotly.express as px
+import plotly.graph_objects as go
 
 # Cache en Neon (opcional, funciona sin él)
 import contextlib
@@ -930,6 +932,148 @@ def analizar_dominios(dominios: List[str]) -> pd.DataFrame:
     return df_resultados
 
 
+def generar_graficos_cache(df: pd.DataFrame):
+    """Genera gráficos de valor para el dashboard de cache."""
+    if df.empty:
+        return
+
+    # Colores consistentes para el branding
+    COLORES_POSTURA = {
+        "Básica": "#FF6B6B",      # Rojo - oportunidad alta
+        "Intermedia": "#FFE66D",  # Amarillo
+        "Avanzada": "#4ECDC4",    # Verde azulado
+    }
+
+    st.markdown("### 📊 Dashboard de Inteligencia")
+
+    # --- Fila 1: Postura + Adopción de seguridad ---
+    col1, col2 = st.columns(2)
+
+    with col1:
+        # Gráfico 1: Distribución de Postura (Donut)
+        postura_counts = df["postura_general"].value_counts().reset_index()
+        postura_counts.columns = ["Postura", "Cantidad"]
+
+        fig_postura = px.pie(
+            postura_counts,
+            values="Cantidad",
+            names="Postura",
+            hole=0.5,
+            color="Postura",
+            color_discrete_map=COLORES_POSTURA,
+            title="🎯 Distribución de Postura de Seguridad"
+        )
+        fig_postura.update_traces(textposition='inside', textinfo='percent+label')
+        fig_postura.update_layout(
+            showlegend=False,
+            margin=dict(t=50, b=20, l=20, r=20),
+            height=300
+        )
+        st.plotly_chart(fig_postura, use_container_width=True)
+
+    with col2:
+        # Gráfico 2: Adopción de controles de seguridad (barras horizontales)
+        total = len(df)
+        adopcion = {
+            "SPF configurado": (df["spf_estado"] != "Ausente").sum(),
+            "DMARC activo": (df["dmarc_estado"] == "Reject").sum(),
+            "HTTPS forzado": (df["https_estado"] == "Forzado").sum(),
+            "HSTS activo": (df["hsts_estado"] == "Presente").sum(),
+            "CDN/WAF": (df["cdn_waf"] != "None").sum(),
+        }
+        adopcion_df = pd.DataFrame([
+            {"Control": k, "Porcentaje": v/total*100, "Cantidad": v}
+            for k, v in adopcion.items()
+        ])
+
+        fig_adopcion = px.bar(
+            adopcion_df,
+            y="Control",
+            x="Porcentaje",
+            orientation="h",
+            text=adopcion_df.apply(lambda r: f"{r['Porcentaje']:.0f}% ({int(r['Cantidad'])})", axis=1),
+            title="🛡️ Adopción de Controles de Seguridad",
+            color="Porcentaje",
+            color_continuous_scale=["#FF6B6B", "#FFE66D", "#4ECDC4"],
+        )
+        fig_adopcion.update_traces(textposition="outside")
+        fig_adopcion.update_layout(
+            showlegend=False,
+            coloraxis_showscale=False,
+            margin=dict(t=50, b=20, l=20, r=20),
+            height=300,
+            xaxis_title="% de dominios",
+            yaxis_title=""
+        )
+        st.plotly_chart(fig_adopcion, use_container_width=True)
+
+    # --- Fila 2: Proveedores de Email + CDN/WAF ---
+    col3, col4 = st.columns(2)
+
+    with col3:
+        # Gráfico 3: Proveedores de Email
+        email_counts = df["correo_proveedor"].value_counts().head(8).reset_index()
+        email_counts.columns = ["Proveedor", "Cantidad"]
+
+        fig_email = px.bar(
+            email_counts,
+            x="Proveedor",
+            y="Cantidad",
+            title="📧 Proveedores de Email (Top 8)",
+            color="Cantidad",
+            color_continuous_scale="Blues",
+            text="Cantidad"
+        )
+        fig_email.update_traces(textposition="outside")
+        fig_email.update_layout(
+            showlegend=False,
+            coloraxis_showscale=False,
+            margin=dict(t=50, b=20, l=20, r=20),
+            height=300,
+            xaxis_title="",
+            yaxis_title="Dominios"
+        )
+        st.plotly_chart(fig_email, use_container_width=True)
+
+    with col4:
+        # Gráfico 4: CDN/WAF detectados
+        waf_data = df[df["cdn_waf"] != "None"]["cdn_waf"].value_counts().reset_index()
+        waf_data.columns = ["CDN/WAF", "Cantidad"]
+
+        if not waf_data.empty:
+            fig_waf = px.pie(
+                waf_data,
+                values="Cantidad",
+                names="CDN/WAF",
+                title="🛡️ CDN/WAF Detectados",
+                color_discrete_sequence=px.colors.qualitative.Set2
+            )
+            fig_waf.update_traces(textposition='inside', textinfo='percent+label')
+            fig_waf.update_layout(
+                showlegend=True,
+                legend=dict(orientation="h", yanchor="bottom", y=-0.3),
+                margin=dict(t=50, b=60, l=20, r=20),
+                height=300
+            )
+            st.plotly_chart(fig_waf, use_container_width=True)
+        else:
+            st.info("No se detectaron CDN/WAF en los dominios analizados")
+
+    # --- Métricas de oportunidad comercial ---
+    st.markdown("### 💼 Oportunidades Comerciales")
+    opp_col1, opp_col2, opp_col3, opp_col4 = st.columns(4)
+
+    basica_pct = (df["postura_general"] == "Básica").sum() / total * 100
+    sin_dmarc_pct = (df["dmarc_estado"] != "Reject").sum() / total * 100
+    sin_waf_pct = (df["cdn_waf"] == "None").sum() / total * 100
+    sin_gateway_pct = (df["correo_gateway"] == "None").sum() / total * 100
+
+    opp_col1.metric("🔥 Postura Básica", f"{basica_pct:.0f}%", help="Mayor potencial de venta")
+    opp_col2.metric("⚠️ Sin DMARC", f"{sin_dmarc_pct:.0f}%", help="Vulnerables a spoofing")
+    opp_col3.metric("🌐 Sin WAF", f"{sin_waf_pct:.0f}%", help="Sin protección web")
+    opp_col4.metric("📧 Sin Gateway", f"{sin_gateway_pct:.0f}%", help="Sin filtrado de email")
+
+
 def vista_global(df: pd.DataFrame):
     st.markdown("## 💼 Oportunidades Comerciales Identificadas")
 
@@ -1191,48 +1335,75 @@ def main():
         else:
             stats = get_cache_stats()
             if stats.get("connected"):
-                col1, col2, col3 = st.columns(3)
-                col1.metric("Total en cache", stats.get("total", 0))
-                col2.metric("Frescos (< 7 días)", stats.get("fresh", 0))
-                col3.metric("Vencidos", stats.get("stale", 0))
+                st.markdown("### 📈 Estado del Cache")
+                col1, col2, col3, col4 = st.columns(4)
+                col1.metric("📦 Total en cache", stats.get("total", 0))
+                col2.metric("✅ Frescos (< 7 días)", stats.get("fresh", 0))
+                col3.metric("⏰ Vencidos", stats.get("stale", 0))
+                col4.metric("💾 Tasa de hit", f"{stats.get('fresh', 0) / max(stats.get('total', 1), 1) * 100:.0f}%")
 
                 st.markdown("---")
-                st.markdown("### Filtros rápidos desde BD")
 
-                filtro_postura = st.selectbox(
-                    "Postura general",
-                    ["Todos", "Básica", "Intermedia", "Avanzada"]
-                )
+                # Filtro y carga
+                with st.expander("🔧 Filtros para cargar", expanded=False):
+                    filtro_postura = st.selectbox(
+                        "Postura general",
+                        ["Todos", "Básica", "Intermedia", "Avanzada"]
+                    )
+                    filtros = {}
+                    if filtro_postura != "Todos":
+                        filtros["postura_general"] = filtro_postura
 
-                filtros = {}
-                if filtro_postura != "Todos":
-                    filtros["postura_general"] = filtro_postura
+                col_btn1, col_btn2 = st.columns([1, 4])
+                with col_btn1:
+                    cargar_cache = st.button("🔄 Cargar datos", type="primary")
 
-                if st.button("🔄 Cargar desde cache"):
-                    df_cache = query_all_cached(filtros if filtros else None)
+                if cargar_cache:
+                    with st.spinner("Cargando datos del cache..."):
+                        df_cache = query_all_cached(filtros if filtros else None)
+
                     if df_cache.empty:
                         st.info("No hay dominios en cache con esos filtros")
                     else:
                         st.success(f"✅ {len(df_cache)} dominios cargados desde cache")
-                        vista_global(df_cache)
+
+                        # 📊 GRÁFICOS DE VALOR
+                        generar_graficos_cache(df_cache)
+
+                        st.markdown("---")
+                        st.markdown("### 📋 Datos Detallados")
+
+                        # Tabla con datos
                         st.dataframe(
-                            df_cache[["dominio", "postura_general", "correo_proveedor", "cdn_waf"]],
+                            df_cache[[
+                                "dominio", "postura_general", "correo_proveedor",
+                                "dmarc_estado", "cdn_waf", "https_estado"
+                            ]],
                             width="stretch",
                             height=400,
                             hide_index=True,
+                            column_config={
+                                "dominio": st.column_config.TextColumn("Dominio", width="medium"),
+                                "postura_general": st.column_config.TextColumn("Postura", width="small"),
+                                "correo_proveedor": st.column_config.TextColumn("Email", width="small"),
+                                "dmarc_estado": st.column_config.TextColumn("DMARC", width="small"),
+                                "cdn_waf": st.column_config.TextColumn("CDN/WAF", width="small"),
+                                "https_estado": st.column_config.TextColumn("HTTPS", width="small"),
+                            }
                         )
 
+                        # Exportar
                         csv = df_cache.to_csv(index=False).encode("utf-8")
                         st.download_button(
-                            "📥 Exportar reporte",
+                            "📥 Exportar reporte completo (CSV)",
                             csv,
                             f"prospectscan_reporte_{datetime.now().strftime('%Y%m%d')}.csv",
                             "text/csv"
                         )
             else:
-                st.error("No se pudo conectar a la BD")
+                st.error("No se pudo conectar a la base de datos")
                 if stats.get("error"):
-                    st.caption(stats.get("error"))
+                    st.caption(f"Error: {stats.get('error')}")
 
 
 if __name__ == "__main__":
