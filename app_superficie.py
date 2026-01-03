@@ -1518,23 +1518,30 @@ def main():
         with col_btn:
             analizar_btn = st.button("🔎 Analizar", type="primary", use_container_width=True)
 
-        if dominio_input:
+        if not dominio_input:
+            st.caption("Ingresa un dominio corporativo y presiona **Analizar**")
+        else:
             dominio_limpio = extraer_dominio(dominio_input)
             if not dominio_limpio:
                 st.error("❌ Dominio no válido. Ingresa un dominio como: empresa.com")
             elif not es_corporativo(dominio_limpio):
                 st.warning("⚠️ Ese es un dominio personal (Gmail, Hotmail, etc.). Ingresa un dominio corporativo.")
-            elif analizar_btn or st.session_state.get("single_domain_last") == dominio_limpio:
-                # Evitar re-análisis en cada rerun: si el dominio no cambió, reutiliza.
-                if (
+            else:
+                # Verificar si ya tenemos resultados para este dominio
+                tiene_cache = (
                     st.session_state.get("single_domain_last") == dominio_limpio
                     and isinstance(st.session_state.get("single_domain_df"), pd.DataFrame)
                     and not st.session_state["single_domain_df"].empty
-                ):
+                )
+                
+                df_single = pd.DataFrame()
+                
+                if tiene_cache:
+                    # Reutilizar resultado anterior
                     df_single = st.session_state["single_domain_df"]
-                else:
-                    df_single = pd.DataFrame()
-
+                elif analizar_btn:
+                    # Usuario presionó el botón: buscar/analizar
+                    
                     # 0) Cache local (si ya venía en el dataframe actual de sesión)
                     df_local = st.session_state.get("df_resultados_last")
                     if isinstance(df_local, pd.DataFrame) and not df_local.empty:
@@ -1544,11 +1551,8 @@ def main():
                             df_single = hit.reset_index(drop=True)
 
                     # 1) Cache Neon (si está configurado)
-                    if df_single.empty:
-                        row_cached = None
-                        if CACHE_AVAILABLE:
-                            row_cached = get_single_domain(dominio_limpio)
-
+                    if df_single.empty and CACHE_AVAILABLE:
+                        row_cached = get_single_domain(dominio_limpio)
                         if row_cached is not None:
                             st.success("✅ Resultado desde cache Neon (sin re-análisis)")
                             df_single = pd.DataFrame([row_cached])
@@ -1562,7 +1566,8 @@ def main():
                     if isinstance(df_single, pd.DataFrame) and not df_single.empty:
                         st.session_state["single_domain_last"] = dominio_limpio
                         st.session_state["single_domain_df"] = df_single
-
+                
+                # Mostrar resultados si los hay (de cache o recién analizados)
                 if not df_single.empty:
                     row = df_single.iloc[0]
                     
@@ -1612,10 +1617,12 @@ def main():
                         st.markdown("#### 📋 Recomendaciones")
                         for i, r in enumerate(recs, 1):
                             st.write(f"{i}. {r}")
-                else:
+                elif analizar_btn:
+                    # Se presionó analizar pero no hay resultados
                     st.error("No se pudo analizar el dominio")
-        else:
-            st.caption("Ingresa un dominio corporativo y presiona **Analizar**")
+                else:
+                    # No hay cache y no se presionó el botón
+                    st.info("💡 Presiona **Analizar** para consultar este dominio")
 
     with tab3:
         if not CACHE_AVAILABLE:
