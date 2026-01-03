@@ -1465,10 +1465,9 @@ def main():
                 else:
                     st.info("💡 Configura DATABASE_URL para guardar análisis")
             
-            return  # Salir temprano si no hay archivo
+            # NO hacer return aquí - los otros tabs deben renderizarse
         
-        # Archivo cargado: procesar
-        if archivo:
+        elif archivo:
             # Evitar re-análisis en cada rerun: verificar si el archivo cambió
             archivo_id = f"{archivo.name}_{archivo.size}"
             
