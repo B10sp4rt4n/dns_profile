@@ -95,7 +95,7 @@ def _get_connection():
 
 
 def init_db():
-    """Crea la tabla si no existe."""
+    """Crea la tabla si no existe y migra si falta columna score."""
     conn = _get_connection()
     if not conn:
         return False
@@ -103,6 +103,20 @@ def init_db():
     try:
         with conn.cursor() as cur:
             cur.execute(CREATE_TABLE_SQL)
+            
+            # Migración: agregar columna score si no existe (tablas antiguas)
+            cur.execute("""
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (
+                        SELECT 1 FROM information_schema.columns 
+                        WHERE table_name = 'dominios_cache' AND column_name = 'score'
+                    ) THEN
+                        ALTER TABLE dominios_cache ADD COLUMN score INTEGER DEFAULT 0;
+                        CREATE INDEX IF NOT EXISTS idx_dominios_score ON dominios_cache(score);
+                    END IF;
+                END $$;
+            """)
         conn.commit()
         return True
     except Exception as e:
