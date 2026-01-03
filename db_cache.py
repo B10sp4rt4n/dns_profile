@@ -63,6 +63,7 @@ def _get_connection():
     try:
         import psycopg2
     except ImportError:
+        st.error("❌ psycopg2 no está instalado")
         return None
 
     # Intentar desde Streamlit secrets primero
@@ -73,8 +74,11 @@ def _get_connection():
             db_url = st.secrets["DATABASE_URL"]
         elif "NEON_DATABASE_URL" in st.secrets:
             db_url = st.secrets["NEON_DATABASE_URL"]
-    except Exception:
+    except FileNotFoundError:
+        # No hay archivo secrets.toml (común en desarrollo sin secrets)
         pass
+    except Exception as e:
+        st.warning(f"Error leyendo secrets: {e}")
 
     # Fallback a variable de entorno
     if not db_url:
