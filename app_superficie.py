@@ -1058,13 +1058,27 @@ def main():
     with tab1:
         archivo = st.file_uploader("Sube archivo CSV o Excel", type=["csv", "xlsx"])
         if archivo:
-            try:
-                dominios = ingesta_archivo(archivo)
-            except Exception as e:
-                st.error("No se pudo leer el archivo. Verifica formato y contenido.")
-                st.caption(f"Detalle: {e}")
-                return
-            df_resultados = analizar_dominios(dominios)
+            # Evitar re-análisis en cada rerun: verificar si el archivo cambió
+            archivo_id = f"{archivo.name}_{archivo.size}"
+            
+            if st.session_state.get("archivo_id_last") == archivo_id and isinstance(
+                st.session_state.get("df_resultados_last"), pd.DataFrame
+            ):
+                # Reutilizar resultado anterior
+                df_resultados = st.session_state["df_resultados_last"]
+            else:
+                # Archivo nuevo: procesar
+                try:
+                    dominios = ingesta_archivo(archivo)
+                except Exception as e:
+                    st.error("No se pudo leer el archivo. Verifica formato y contenido.")
+                    st.caption(f"Detalle: {e}")
+                    return
+                df_resultados = analizar_dominios(dominios)
+
+                # Guardar en session_state
+                st.session_state["archivo_id_last"] = archivo_id
+                st.session_state["df_resultados_last"] = df_resultados
 
             if df_resultados.empty:
                 st.warning("No se pudieron analizar dominios válidos desde el CSV")
@@ -1075,6 +1089,9 @@ def main():
             vista_dominio(df_resultados)
         else:
             st.info("Carga un archivo para iniciar el diagnóstico")
+            # Limpiar estado si se quitó el archivo
+            st.session_state.pop("archivo_id_last", None)
+            st.session_state.pop("df_resultados_last", None)
 
     with tab2:
         st.markdown("### Consulta un dominio específico")
