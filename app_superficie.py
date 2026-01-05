@@ -1807,7 +1807,8 @@ def main():
                                     nuevos = [r for r in nuevos if r]
                                     
                                     if nuevos:
-                                        df_nuevos = pd.DataFrame([r.__dict__ for r in nuevos])
+                                        # Convertir a formato compatible con caché
+                                        df_nuevos = pd.DataFrame([resultado_a_df_resultados(r) for r in nuevos])
                                         # Guardar en caché
                                         save_to_cache(df_nuevos)
                                         
@@ -1827,7 +1828,7 @@ def main():
                                     resultados = list(executor.map(analizar_dominio, dominios_zoom))
                                 resultados = [r for r in resultados if r]
                                 if resultados:
-                                    resultados_df = pd.DataFrame([r.__dict__ for r in resultados])
+                                    resultados_df = pd.DataFrame([resultado_a_df_resultados(r) for r in resultados])
                             
                             if resultados_df is not None and not resultados_df.empty:
                                 st.session_state["pipeline_results"] = resultados_df
