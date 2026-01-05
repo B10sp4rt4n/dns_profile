@@ -1908,27 +1908,140 @@ def main():
             st.markdown("### 🎯 Cruce Semántico: Priorización de Oportunidades")
             st.markdown("*Contexto × Postura → Prioridad de Acción*")
             
-            # Filtro de prioridad
-            col_filtro, col_info = st.columns([1, 3])
-            with col_filtro:
-                filtro_prioridad = st.selectbox(
-                    "Mostrar prioridad ≥",
-                    ["🔴 Crítica", "🟠 Alta", "🟡 Media", "🟢 Baja"],
-                    index=2
-                )
-            
             # Calcular prioridades si no existen
             if 'prioridad' not in df_res.columns:
                 df_res = calcular_prioridades_cruce(df_res)
                 st.session_state["pipeline_results"] = df_res
             
-            # Filtrar según selección
+            # ============================================================
+            # FILTROS AVANZADOS
+            # ============================================================
+            with st.expander("🔍 **Filtros Avanzados**", expanded=True):
+                col_f1, col_f2, col_f3, col_f4 = st.columns(4)
+                
+                with col_f1:
+                    filtro_prioridad = st.selectbox(
+                        "Prioridad mínima",
+                        ["🔴 Crítica", "🟠 Alta", "🟡 Media", "🟢 Baja"],
+                        index=2
+                    )
+                
+                with col_f2:
+                    # Filtro por proveedor de email
+                    if 'correo_proveedor' in df_res.columns:
+                        proveedores_email = ['Todos'] + sorted(df_res['correo_proveedor'].dropna().unique().tolist())
+                        filtro_email = st.multiselect(
+                            "📧 Proveedor Email",
+                            proveedores_email,
+                            default=['Todos']
+                        )
+                    else:
+                        filtro_email = ['Todos']
+                
+                with col_f3:
+                    # Filtro por Email Security Gateway
+                    if 'correo_gateway' in df_res.columns:
+                        gateways = ['Todos'] + sorted(df_res['correo_gateway'].dropna().unique().tolist())
+                        filtro_gateway = st.multiselect(
+                            "🔒 Security Gateway",
+                            gateways,
+                            default=['Todos']
+                        )
+                    else:
+                        filtro_gateway = ['Todos']
+                
+                with col_f4:
+                    # Filtro por CDN/WAF
+                    if 'cdn_waf' in df_res.columns:
+                        cdns = ['Todos'] + sorted(df_res['cdn_waf'].dropna().unique().tolist())
+                        filtro_cdn = st.multiselect(
+                            "🛡️ CDN/WAF",
+                            cdns,
+                            default=['Todos']
+                        )
+                    else:
+                        filtro_cdn = ['Todos']
+                
+                # Segunda fila de filtros
+                col_f5, col_f6, col_f7, col_f8 = st.columns(4)
+                
+                with col_f5:
+                    # Filtro por postura
+                    if 'postura_general' in df_res.columns:
+                        posturas = ['Todas'] + sorted(df_res['postura_general'].dropna().unique().tolist())
+                        filtro_postura = st.multiselect(
+                            "📊 Postura",
+                            posturas,
+                            default=['Todas']
+                        )
+                    else:
+                        filtro_postura = ['Todas']
+                
+                with col_f6:
+                    # Filtro por DMARC
+                    if 'dmarc_estado' in df_res.columns:
+                        dmarcs = ['Todos'] + sorted(df_res['dmarc_estado'].dropna().unique().tolist())
+                        filtro_dmarc = st.multiselect(
+                            "📧 DMARC",
+                            dmarcs,
+                            default=['Todos']
+                        )
+                    else:
+                        filtro_dmarc = ['Todos']
+                
+                with col_f7:
+                    # Filtro por industria
+                    if 'industria' in df_res.columns:
+                        industrias = ['Todas'] + sorted([i for i in df_res['industria'].dropna().unique().tolist() if i and i != 'N/A'])
+                        filtro_industria = st.multiselect(
+                            "🏭 Industria",
+                            industrias,
+                            default=['Todas']
+                        )
+                    else:
+                        filtro_industria = ['Todas']
+                
+                with col_f8:
+                    # Botón para limpiar filtros
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    if st.button("🔄 Limpiar filtros"):
+                        st.rerun()
+            
+            # Aplicar filtros
             prioridad_map = {"🔴 Crítica": 4, "🟠 Alta": 3, "🟡 Media": 2, "🟢 Baja": 1}
             min_prioridad = prioridad_map.get(filtro_prioridad, 2)
-            df_filtrado = df_res[df_res['prioridad_num'] >= min_prioridad].sort_values('score_oportunidad', ascending=False)
             
-            with col_info:
-                st.info(f"📋 Mostrando **{len(df_filtrado)}** de {len(df_res)} dominios")
+            df_filtrado = df_res[df_res['prioridad_num'] >= min_prioridad].copy()
+            
+            # Aplicar filtro de email
+            if 'Todos' not in filtro_email and filtro_email:
+                df_filtrado = df_filtrado[df_filtrado['correo_proveedor'].isin(filtro_email)]
+            
+            # Aplicar filtro de gateway
+            if 'Todos' not in filtro_gateway and filtro_gateway:
+                df_filtrado = df_filtrado[df_filtrado['correo_gateway'].isin(filtro_gateway)]
+            
+            # Aplicar filtro de CDN/WAF
+            if 'Todos' not in filtro_cdn and filtro_cdn:
+                df_filtrado = df_filtrado[df_filtrado['cdn_waf'].isin(filtro_cdn)]
+            
+            # Aplicar filtro de postura
+            if 'Todas' not in filtro_postura and filtro_postura:
+                df_filtrado = df_filtrado[df_filtrado['postura_general'].isin(filtro_postura)]
+            
+            # Aplicar filtro de DMARC
+            if 'Todos' not in filtro_dmarc and filtro_dmarc:
+                df_filtrado = df_filtrado[df_filtrado['dmarc_estado'].isin(filtro_dmarc)]
+            
+            # Aplicar filtro de industria
+            if 'Todas' not in filtro_industria and filtro_industria:
+                df_filtrado = df_filtrado[df_filtrado['industria'].isin(filtro_industria)]
+            
+            # Ordenar por score de oportunidad
+            df_filtrado = df_filtrado.sort_values('score_oportunidad', ascending=False)
+            
+            # Mostrar resumen de filtros
+            st.info(f"📋 Mostrando **{len(df_filtrado)}** de {len(df_res)} dominios")
             
             # Mostrar tarjetas de oportunidad
             for idx, row in df_filtrado.iterrows():
@@ -1936,7 +2049,7 @@ def main():
             
             # Exportar con prioridades
             st.markdown("---")
-            csv = df_res.to_csv(index=False)
+            csv = df_filtrado.to_csv(index=False)
             st.download_button(
                 "📥 Exportar análisis completo (CSV)",
                 csv,
