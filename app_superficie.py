@@ -2076,6 +2076,7 @@ def mostrar_tarjeta_oportunidad(row: pd.Series, score_col: str):
     score_op = row.get('score_oportunidad', 50)
     empresa = row.get('empresa', dominio)
     industria = row.get('industria', 'N/A')
+    score_seg = row.get(score_col, row.get('score', 0))
     
     # Color según prioridad
     color_map = {
@@ -2086,22 +2087,31 @@ def mostrar_tarjeta_oportunidad(row: pd.Series, score_col: str):
     }
     color = color_map.get(prioridad, "#95a5a6")
     
-    with st.expander(f"{prioridad} **{dominio}** | Score: {score_op}/100 | {industria}", expanded=False):
+    # Título claro: Oportunidad vs Seguridad
+    with st.expander(f"{prioridad} **{dominio}** | 🎯 Oportunidad: {score_op} | 🔒 Seguridad: {score_seg}", expanded=False):
         col1, col2 = st.columns(2)
         
         with col1:
             st.markdown(f"**🏢 Empresa:** {empresa}")
             st.markdown(f"**🌐 Dominio:** {dominio}")
             st.markdown(f"**🏭 Industria:** {industria}")
-            score_seg = row.get(score_col, row.get('score', 'N/A'))
-            st.markdown(f"**🔒 Score Seguridad:** {score_seg}/100")
+            st.markdown(f"**🎯 Score Oportunidad:** {score_op}/100")
+            st.caption("_Mayor = mejor prospecto para vender_")
         
         with col2:
             budget_min = row.get('budget_min', 25000)
             budget_max = row.get('budget_max', 100000)
             st.markdown(f"**💰 Budget Estimado:** ${budget_min:,} - ${budget_max:,} USD")
+            st.markdown(f"**🔒 Score Seguridad:** {score_seg}/100")
+            st.caption("_Menor = más gaps = más oportunidad_")
             st.markdown(f"**📊 Postura:** {row.get('postura_general', 'N/A')}")
+        
+        # Detalles técnicos
+        st.markdown("---")
+        col3, col4 = st.columns(2)
+        with col3:
             st.markdown(f"**📧 DMARC:** {row.get('dmarc_estado', 'N/A')}")
+        with col4:
             st.markdown(f"**🌐 HSTS:** {row.get('hsts', row.get('hsts_presente', 'N/A'))}")
         
         # Factores
