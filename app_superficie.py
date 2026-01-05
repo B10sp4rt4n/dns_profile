@@ -1787,35 +1787,47 @@ def main():
                     
                     if st.button("▶️ Ejecutar Análisis de Postura", type="primary"):
                         with st.spinner("Analizando superficie digital de los dominios..."):
-                            # Usar la misma lógica que el tab1
-                            resultados = []
+                            resultados_df = None
                             
                             # Análisis masivo con caché
                             if CACHE_AVAILABLE:
-                                cached = get_cached_dominios(dominios_zoom)
-                                dominios_analizar = [d for d in dominios_zoom if d not in cached]
-                                resultados.extend(cached.values())
+                                df_cached, dominios_pendientes = get_cached_dominios(dominios_zoom)
                                 
-                                if dominios_analizar:
-                                    st.info(f"Analizando {len(dominios_analizar)} dominios no cacheados...")
+                                if not df_cached.empty:
+                                    st.info(f"📦 {len(df_cached)} dominios en caché")
+                                
+                                if dominios_pendientes:
+                                    st.info(f"🔍 Analizando {len(dominios_pendientes)} dominios nuevos...")
                                     with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
-                                        nuevos = list(executor.map(analizar_dominio_completo, dominios_analizar))
-                                    resultados.extend([r for r in nuevos if r])
+                                        nuevos = list(executor.map(analizar_dominio_completo, dominios_pendientes))
+                                    nuevos = [r for r in nuevos if r]
                                     
-                                    # Guardar en caché
-                                    for r in nuevos:
-                                        if r:
-                                            save_to_cache(r)
+                                    if nuevos:
+                                        df_nuevos = pd.DataFrame([r.__dict__ for r in nuevos])
+                                        # Guardar en caché
+                                        save_to_cache(df_nuevos)
+                                        
+                                        # Combinar con caché
+                                        if not df_cached.empty:
+                                            resultados_df = pd.concat([df_cached, df_nuevos], ignore_index=True)
+                                        else:
+                                            resultados_df = df_nuevos
+                                    else:
+                                        resultados_df = df_cached if not df_cached.empty else None
+                                else:
+                                    resultados_df = df_cached if not df_cached.empty else None
                             else:
-                                # Sin caché
+                                # Sin caché - analizar todo
+                                st.info(f"🔍 Analizando {len(dominios_zoom)} dominios...")
                                 with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
                                     resultados = list(executor.map(analizar_dominio_completo, dominios_zoom))
                                 resultados = [r for r in resultados if r]
+                                if resultados:
+                                    resultados_df = pd.DataFrame([r.__dict__ for r in resultados])
                             
-                            if resultados:
-                                df_results = pd.DataFrame([r.__dict__ for r in resultados])
-                                st.session_state["pipeline_results"] = df_results
-                                st.success(f"✅ Análisis completado: {len(resultados)} dominios")
+                            if resultados_df is not None and not resultados_df.empty:
+                                st.session_state["pipeline_results"] = resultados_df
+                                st.success(f"✅ Análisis completado: {len(resultados_df)} dominios")
                             else:
                                 st.error("No se pudieron analizar los dominios")
                 
