@@ -20,6 +20,15 @@
   font-size: 1.1rem;
 }
 
+.debug-info {
+  margin-top: 0.5rem;
+  padding: 0.5rem;
+  background: #ecf0f1;
+  border-radius: 4px;
+  font-family: 'Courier New', monospace;
+  color: #7f8c8d;
+}
+
 /* Dropzone */
 .dropzone {
   border: 3px dashed #bdc3c7;
@@ -94,18 +103,50 @@
 /* Error */
 .upload-error {
   margin-top: 1rem;
-  padding: 1rem;
+  padding: 1.5rem;
   background: #fadbd8;
-  border: 1px solid #e74c3c;
+  border: 2px solid #e74c3c;
   border-radius: 8px;
   color: #c0392b;
   display: flex;
-  align-items: center;
-  gap: 0.5rem;
+  align-items: flex-start;
+  gap: 1rem;
+  animation: shake 0.5s;
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-10px); }
+  75% { transform: translateX(10px); }
 }
 
 .error-icon {
-  font-size: 1.5rem;
+  font-size: 2rem;
+  flex-shrink: 0;
+}
+
+.error-content {
+  flex: 1;
+}
+
+.error-content p {
+  margin: 0.5rem 0;
+}
+
+.btn-retry {
+  margin-top: 1rem;
+  padding: 0.5rem 1rem;
+  background: #c0392b;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 500;
+  transition: background 0.3s;
+}
+
+.btn-retry:hover {
+  background: #a93226;
 }
 
 /* Success */

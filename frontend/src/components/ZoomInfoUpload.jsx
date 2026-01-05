@@ -13,14 +13,20 @@ const ZoomInfoUpload = ({ onUploadSuccess }) => {
 
   const onDrop = useCallback(async (acceptedFiles) => {
     const file = acceptedFiles[0];
-    if (!file) return;
-
-    // Validar que sea Excel
-    if (!file.name.match(/\.(xlsx|xls)$/)) {
-      setError('Solo se aceptan archivos Excel (.xlsx, .xls)');
+    if (!file) {
+      console.log('No file selected');
       return;
     }
 
+    // Validar que sea Excel
+    if (!file.name.match(/\.(xlsx|xls)$/)) {
+      const errorMsg = 'Solo se aceptan archivos Excel (.xlsx, .xls)';
+      console.error('Invalid file type:', file.name);
+      setError(errorMsg);
+      return;
+    }
+
+    console.log('Starting upload:', file.name, file.size, 'bytes');
     setIsUploading(true);
     setError(null);
     setUploadResult(null);
@@ -29,16 +35,22 @@ const ZoomInfoUpload = ({ onUploadSuccess }) => {
       const formData = new FormData();
       formData.append('file', file);
 
+      console.log('Sending POST to /api/ingesta/upload');
       const response = await fetch('http://localhost:8000/api/ingesta/upload', {
         method: 'POST',
         body: formData,
       });
 
+      console.log('Response status:', response.status);
+
       if (!response.ok) {
-        throw new Error(`Error ${response.status}: ${response.statusText}`);
+        const errorText = await response.text();
+        console.error('Upload failed:', response.status, errorText);
+        throw new Error(`Error ${response.status}: ${errorText || response.statusText}`);
       }
 
       const data = await response.json();
+      console.log('Upload successful:', data);
       setUploadResult(data);
       
       // Notificar al componente padre
@@ -46,7 +58,8 @@ const ZoomInfoUpload = ({ onUploadSuccess }) => {
         onUploadSuccess(data);
       }
     } catch (err) {
-      setError(err.message);
+      console.error('Upload error:', err);
+      setError(err.message || 'Error al subir archivo');
     } finally {
       setIsUploading(false);
     }
@@ -66,6 +79,9 @@ const ZoomInfoUpload = ({ onUploadSuccess }) => {
       <div className="upload-header">
         <h2>📤 Ingesta ZoomInfo</h2>
         <p>Sube un reporte Excel de ZoomInfo para iniciar el análisis</p>
+        <div className="debug-info">
+          <small>🔧 Debug: API = http://localhost:8000 | Estado: {isUploading ? 'Subiendo...' : 'Listo'}</small>
+        </div>
       </div>
 
       <div 
@@ -96,7 +112,19 @@ const ZoomInfoUpload = ({ onUploadSuccess }) => {
       {error && (
         <div className="upload-error">
           <span className="error-icon">⚠️</span>
-          <span>{error}</span>
+          <div className="error-content">
+            <p><strong>Error al subir archivo:</strong></p>
+            <p>{error}</p>
+            <button 
+              className="btn-retry" 
+              onClick={() => {
+                setError(null);
+                setUploadResult(null);
+              }}
+            >
+              🔄 Reintentar
+            </button>
+          </div>
         </div>
       )}
 
