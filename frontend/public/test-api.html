@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test API Connection</title>
+</head>
+<body>
+    <h1>ProspectScan API Test</h1>
+    <button onclick="testAPI()">Test API Connection</button>
+    <pre id="result"></pre>
+    
+    <script>
+        const API_URL = 'https://scaling-dollop-jj7qw7xpr6x7cpwpw-8000.app.github.dev';
+        
+        async function testAPI() {
+            const resultEl = document.getElementById('result');
+            resultEl.textContent = 'Testing...';
+            
+            try {
+                // Test 1: Health check
+                const healthRes = await fetch(`${API_URL}/api/health`);
+                const health = await healthRes.json();
+                resultEl.textContent = `✅ Health Check:\n${JSON.stringify(health, null, 2)}\n\n`;
+                
+                // Test 2: Get domains
+                resultEl.textContent += 'Fetching domains...\n';
+                const domainsRes = await fetch(`${API_URL}/api/domains`);
+                const domains = await domainsRes.json();
+                resultEl.textContent += `✅ Domains Count: ${domains.length}\n`;
+                resultEl.textContent += `First domain: ${JSON.stringify(domains[0], null, 2)}`;
+                
+            } catch (error) {
+                resultEl.textContent = `❌ Error: ${error.message}`;
+                console.error(error);
+            }
+        }
+        
+        // Auto-test on load
+        window.addEventListener('load', testAPI);
+    </script>
+</body>
+</html>
