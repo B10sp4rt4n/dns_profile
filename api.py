@@ -667,22 +667,7 @@ def ejecutar_cruce_batch(
         raise HTTPException(status_code=500, detail=f"Error en cruce: {str(e)}")
 
 
-@app.get("/api/cruce/{dominio}")
-def get_resultado_cruce(dominio: str):
-    """
-    Obtiene ResultadoCruce para un dominio específico.
-    Debe haberse ejecutado el batch primero.
-    """
-    if dominio not in _resultados_cruce_storage:
-        raise HTTPException(
-            status_code=404, 
-            detail=f"No hay resultado de cruce para {dominio}. Ejecute /api/cruce/batch primero."
-        )
-    
-    return resultado_a_dict(_resultados_cruce_storage[dominio])
-
-
-@app.post("/api/cruce/dominio-individual")
+@app.post("/api/cruce/analizar")
 def analizar_dominio_completo(
     dominio: str = Query(..., description="Dominio a analizar"),
     industria: str = Query("general", description="Industria de la empresa"),
@@ -708,14 +693,20 @@ def analizar_dominio_completo(
     try:
         # Capa 1+2: Simular ingesta y derivar contexto
         empresa = EmpresaFuente(
+            zoominfo_id=f"manual-{uuid.uuid4().hex[:8]}",
             dominio=dominio,
             nombre_empresa=dominio.split('.')[0].upper(),
             industria=industria,
-            pais="MX",
+            sub_industria=None,
             empleados_rango="desconocido",
-            ingresos_rango="desconocido",
-            tecnologias_detectadas=[],
-            fecha_extraccion=datetime.utcnow()
+            ingresos_rango=None,
+            pais="MX",
+            estado_region=None,
+            crecimiento_empleados_12m=None,
+            funding_reciente="funding" in señales.lower() if señales else False,
+            tech_stack_conocido=[],
+            snapshot_id=str(uuid.uuid4()),
+            timestamp_fuente=datetime.utcnow()
         )
         
         # Mapear estado
@@ -748,17 +739,19 @@ def analizar_dominio_completo(
         # GDPR si tiene presencia EU (asumimos por defecto)
         regulaciones.append("GDPR")
         
+        snapshot_id = str(uuid.uuid4())
         contexto = ContextoEmpresarial(
             dominio=dominio,
-            snapshot_id=str(uuid.uuid4()),
-            empresa_fuente=empresa,
             estado_organizacional=estado_org,
             ritmo_cambio="moderado",
             presion_externa=presion,
-            señales_inversion=señales.split(",") if señales else [],
+            señales_inversion=[s.strip() for s in señales.split(",") if s.strip()] if señales else [],
+            madurez_digital="en_desarrollo",
             industria_detectada=industria,
             regulaciones_aplicables=regulaciones,
-            fecha_derivacion=datetime.utcnow()
+            snapshot_origen=snapshot_id,
+            timestamp_derivacion=datetime.utcnow(),
+            confianza_derivacion=0.7  # Datos manuales = confianza media
         )
         
         # Capa 3: Postura de seguridad
@@ -776,6 +769,21 @@ def analizar_dominio_completo(
     
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error en análisis: {str(e)}")
+
+
+@app.get("/api/cruce/{dominio}")
+def get_resultado_cruce(dominio: str):
+    """
+    Obtiene ResultadoCruce para un dominio específico.
+    Debe haberse ejecutado el batch o análisis individual primero.
+    """
+    if dominio not in _resultados_cruce_storage:
+        raise HTTPException(
+            status_code=404, 
+            detail=f"No hay resultado de cruce para {dominio}. Ejecute /api/cruce/batch o /api/cruce/analizar primero."
+        )
+    
+    return resultado_a_dict(_resultados_cruce_storage[dominio])
 
 
 def _resultado_a_postura(resultado) -> PosturaSeguridad:
@@ -819,18 +827,26 @@ def _resultado_a_postura(resultado) -> PosturaSeguridad:
     if resultado.exposicion.cdn_waf:
         score += 10
     
+    # Detectar HSTS
+    tiene_hsts = False
+    if hasattr(resultado.exposicion, 'hsts') and resultado.exposicion.hsts:
+        tiene_hsts = resultado.exposicion.hsts.value not in ["No disponible", "Ausente"]
+    
     return PosturaSeguridad(
         dominio=resultado.dominio,
         postura_identidad=postura_identidad,
         postura_exposicion=postura_exposicion,
         postura_general=postura_general,
+        score_agregado=min(100, max(0, score)),
+        vendors_email=[resultado.identidad.vendor_correo] if resultado.identidad.vendor_correo else [],
+        vendors_seguridad=resultado.identidad.vendors_seguridad or [],
+        cdn_waf=resultado.exposicion.cdn_waf,
         tiene_spf=resultado.identidad.estado_spf.value != "Ausente",
         tiene_dmarc=resultado.identidad.estado_dmarc.value != "Ausente",
         tiene_https=resultado.exposicion.https.value not in ["No disponible", "Redirect Inseguro"],
-        tiene_waf=resultado.exposicion.cdn_waf is not None,
-        vendors_detectados=resultado.identidad.vendors_seguridad or [],
-        score_agregado=min(100, max(0, score)),
-        fecha_analisis=datetime.utcnow()
+        tiene_hsts=tiene_hsts,
+        timestamp_analisis=datetime.utcnow(),
+        fuente_analisis="dns_scan+header_check"
     )
 
 
