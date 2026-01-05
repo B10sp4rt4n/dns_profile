@@ -567,7 +567,7 @@ async def upload_zoominfo_excel(file: UploadFile = File(...)):
             snapshot, empresas, contextos = procesar_ingesta_zoominfo(tmp_path)
             
             # Almacenar en memoria
-            _snapshots_storage[snapshot.id] = snapshot
+            _snapshots_storage[snapshot.snapshot_id] = snapshot
             for ctx in contextos:
                 _contextos_storage[ctx.dominio] = ctx
             
@@ -576,12 +576,11 @@ async def upload_zoominfo_excel(file: UploadFile = File(...)):
             
             return {
                 "status": "success",
-                "snapshot_id": snapshot.id,
-                "archivo_original": snapshot.archivo_origen,
+                "snapshot_id": snapshot.snapshot_id,
                 "checksum": snapshot.checksum,
                 "empresas_count": len(empresas),
                 "dominios": dominios,
-                "timestamp": snapshot.fecha_creacion.isoformat(),
+                "timestamp": snapshot.timestamp_ingesta.isoformat(),
                 "mensaje": "Snapshot creado. Use POST /api/cruce/batch para ejecutar análisis completo."
             }
         finally:
@@ -616,7 +615,7 @@ def ejecutar_cruce_batch(
         # Obtener contextos del snapshot
         dominios_snapshot = [
             dominio for dominio, ctx in _contextos_storage.items()
-            if ctx.snapshot_id == snapshot_id
+            if ctx.snapshot_origen == snapshot_id
         ]
         
         if not dominios_snapshot:
@@ -644,8 +643,8 @@ def ejecutar_cruce_batch(
             except Exception as e:
                 errores.append({"dominio": dominio, "error": str(e)})
         
-        # Filtrar por prioridad
-        prioridad_enum = PrioridadAccion(prioridad_minima.upper())
+        # Filtrar por prioridad (el enum usa minúsculas)
+        prioridad_enum = PrioridadAccion(prioridad_minima.lower())
         resultados_filtrados = filtrar_por_prioridad(resultados, prioridad_enum)
         
         # Ordenar por score

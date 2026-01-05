@@ -24,27 +24,37 @@ from models.data_model_v2 import (
 
 # ============================================================================
 # MAPEO DE COLUMNAS ZOOMINFO → EmpresaFuente
+# Soporta múltiples formatos de columnas de ZoomInfo
 # ============================================================================
 
 COLUMNAS_ZOOMINFO = {
     # Identificadores
-    'company_id': 'zoominfo_id',
-    'website': 'dominio',
-    'company_name': 'nombre_empresa',
+    'zoominfo_id': ['company_id', 'ZoomInfo Company ID', 'zoominfo_company_id', 'ZoomInfo ID'],
+    'dominio': ['website', 'Website', 'company_website', 'domain', 'Domain'],
+    'nombre_empresa': ['company_name', 'Company Name', 'name', 'Name'],
     
     # Datos empresariales
-    'industry': 'industria',
-    'sub_industry': 'sub_industria',
-    'employee_range': 'empleados_rango',
-    'revenue_range': 'ingresos_rango',
-    'country': 'pais',
-    'state': 'estado_region',
+    'industria': ['industry', 'Industry', 'primary_industry'],
+    'sub_industria': ['sub_industry', 'Sub Industry', 'secondary_industry'],
+    'empleados_rango': ['employee_range', 'Employees', 'employees', 'employee_count'],
+    'ingresos_rango': ['revenue_range', 'Revenue', 'revenue', 'annual_revenue'],
+    'pais': ['country', 'Country', 'hq_country'],
+    'estado_region': ['state', 'State', 'hq_state', 'region'],
     
     # Señales
-    'employee_growth_12m': 'crecimiento_empleados_12m',
-    'recent_funding': 'funding_reciente',
-    'technologies': 'tech_stack_conocido',
+    'crecimiento_empleados_12m': ['employee_growth_12m', 'Employee Growth (YoY)', 'employee_growth'],
+    'funding_reciente': ['recent_funding', 'Recent Funding', 'funding'],
+    'tech_stack_conocido': ['technologies', 'Technologies', 'tech_stack'],
 }
+
+
+def obtener_valor_columna(row: Dict, campo: str, default=None):
+    """Busca valor en múltiples posibles nombres de columna"""
+    posibles = COLUMNAS_ZOOMINFO.get(campo, [campo])
+    for col in posibles:
+        if col in row and row[col] is not None and str(row[col]).strip():
+            return row[col]
+    return default
 
 
 def parsear_excel_zoominfo(ruta_excel: str) -> pd.DataFrame:
@@ -95,22 +105,38 @@ def extraer_empresas(snapshot: Snapshot) -> List[EmpresaFuente]:
     empresas = []
     
     for row in snapshot.datos_crudos:
-        # Mapeo directo, sin transformaciones
+        # Obtener dominio y limpiarlo
+        dominio_raw = obtener_valor_columna(row, 'dominio', '')
+        dominio = str(dominio_raw).replace('http://', '').replace('https://', '').split('/')[0].lower().strip()
+        
+        # Obtener tech stack
+        tech_raw = obtener_valor_columna(row, 'tech_stack_conocido', '')
+        tech_stack = [t.strip() for t in str(tech_raw).split(',') if t.strip()] if tech_raw else []
+        
+        # Obtener crecimiento
+        crecimiento_raw = obtener_valor_columna(row, 'crecimiento_empleados_12m')
+        crecimiento = None
+        if crecimiento_raw:
+            try:
+                crecimiento = float(crecimiento_raw)
+            except:
+                pass
+        
         empresa = EmpresaFuente(
-            zoominfo_id=str(row.get('company_id', '')),
-            dominio=str(row.get('website', '')).replace('http://', '').replace('https://', '').split('/')[0],
-            nombre_empresa=str(row.get('company_name', '')),
-            industria=str(row.get('industry', 'Desconocido')),
-            sub_industria=row.get('sub_industry'),
-            empleados_rango=str(row.get('employee_range', 'Desconocido')),
-            ingresos_rango=row.get('revenue_range'),
-            pais=str(row.get('country', 'Unknown')),
-            estado_region=row.get('state'),
+            zoominfo_id=str(obtener_valor_columna(row, 'zoominfo_id', f'auto_{uuid.uuid4().hex[:8]}')),
+            dominio=dominio,
+            nombre_empresa=str(obtener_valor_columna(row, 'nombre_empresa', 'Desconocido')),
+            industria=str(obtener_valor_columna(row, 'industria', 'General')),
+            sub_industria=obtener_valor_columna(row, 'sub_industria'),
+            empleados_rango=str(obtener_valor_columna(row, 'empleados_rango', 'Desconocido')),
+            ingresos_rango=obtener_valor_columna(row, 'ingresos_rango'),
+            pais=str(obtener_valor_columna(row, 'pais', 'Unknown')),
+            estado_region=obtener_valor_columna(row, 'estado_region'),
             
             # Señales numéricas
-            crecimiento_empleados_12m=float(row.get('employee_growth_12m', 0)) if row.get('employee_growth_12m') else None,
-            funding_reciente=bool(row.get('recent_funding', False)),
-            tech_stack_conocido=str(row.get('technologies', '')).split(',') if row.get('technologies') else [],
+            crecimiento_empleados_12m=crecimiento,
+            funding_reciente=bool(obtener_valor_columna(row, 'funding_reciente', False)),
+            tech_stack_conocido=tech_stack,
             
             # Metadatos
             snapshot_id=snapshot.snapshot_id,
