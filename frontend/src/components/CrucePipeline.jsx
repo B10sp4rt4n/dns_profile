@@ -12,6 +12,11 @@ const CrucePipeline = ({ snapshotId }) => {
   const [prioridadFilter, setPrioridadFilter] = useState('baja');
 
   const ejecutarCruce = async () => {
+    if (!snapshotId) {
+      setError('No hay snapshot cargado. Por favor sube un archivo ZoomInfo primero.');
+      return;
+    }
+
     setIsProcessing(true);
     setError(null);
 
@@ -60,47 +65,62 @@ const CrucePipeline = ({ snapshotId }) => {
       <div className="pipeline-header">
         <h2>🔄 Pipeline de Cruce Semántico</h2>
         <p>Ejecuta REGLAS_CRUCE: Contexto × Postura → Prioridad</p>
+        
+        {snapshotId && (
+          <div className="snapshot-indicator">
+            ✅ Snapshot activo: <code>{snapshotId}</code>
+          </div>
+        )}
       </div>
 
-      <div className="pipeline-controls">
-        <div className="control-group">
-          <label>Prioridad mínima:</label>
-          <select 
-            value={prioridadFilter} 
-            onChange={(e) => setPrioridadFilter(e.target.value)}
-            disabled={isProcessing}
-          >
-            <option value="critica">🔴 Crítica</option>
-            <option value="alta">🟠 Alta</option>
-            <option value="media">🟡 Media</option>
-            <option value="baja">🟢 Baja</option>
-          </select>
+      {!snapshotId ? (
+        <div className="pipeline-empty">
+          <div className="empty-icon">📭</div>
+          <h3>Sin datos para procesar</h3>
+          <p>Ve al tab <strong>Ingesta ZoomInfo</strong> y sube un archivo Excel primero.</p>
+          <p className="empty-hint">El snapshot se cargará automáticamente aquí.</p>
         </div>
+      ) : (
+        <>
+          <div className="pipeline-controls">
+            <div className="control-group">
+              <label>Prioridad mínima:</label>
+              <select 
+                value={prioridadFilter} 
+                onChange={(e) => setPrioridadFilter(e.target.value)}
+                disabled={isProcessing}
+              >
+                <option value="critica">🔴 Crítica</option>
+                <option value="alta">🟠 Alta</option>
+                <option value="media">🟡 Media</option>
+                <option value="baja">🟢 Baja</option>
+              </select>
+            </div>
 
-        <button 
-          onClick={ejecutarCruce} 
-          disabled={isProcessing || !snapshotId}
-          className="btn-execute"
-        >
-          {isProcessing ? (
-            <>
-              <span className="btn-spinner"></span>
-              Procesando...
-            </>
-          ) : (
-            <>
-              ▶️ Ejecutar Cruce
-            </>
+            <button 
+              onClick={ejecutarCruce} 
+              disabled={isProcessing}
+              className="btn-execute"
+            >
+              {isProcessing ? (
+                <>
+                  <span className="btn-spinner"></span>
+                  Procesando...
+                </>
+              ) : (
+                <>
+                  ▶️ Ejecutar Cruce
+                </>
+              )}
+            </button>
+          </div>
+
+          {error && (
+            <div className="pipeline-error">
+              <span className="error-icon">⚠️</span>
+              <span>{error}</span>
+            </div>
           )}
-        </button>
-      </div>
-
-      {error && (
-        <div className="pipeline-error">
-          <span className="error-icon">⚠️</span>
-          <span>{error}</span>
-        </div>
-      )}
 
       {results && (
         <div className="pipeline-results">
@@ -231,6 +251,8 @@ const CrucePipeline = ({ snapshotId }) => {
             )}
           </div>
         </div>
+      )}
+      </>
       )}
     </div>
   );
