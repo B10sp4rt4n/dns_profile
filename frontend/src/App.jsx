@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, Navigate } from 'react-router-dom';
 import DomainHeatmap from './components/DomainHeatmap';
 import ZoomInfoUpload from './components/ZoomInfoUpload';
 import CrucePipeline from './components/CrucePipeline';
 import { mockDomains } from './utils/mockData';
+import { API_URL, API_BASE_URL } from './config';
 import './App.css';
 
 /**
@@ -12,10 +13,33 @@ import './App.css';
  */
 function App() {
   const [currentSnapshot, setCurrentSnapshot] = useState(null);
+  const [backendStatus, setBackendStatus] = useState({ connected: false, loading: true });
 
   const handleUploadSuccess = (uploadResult) => {
     setCurrentSnapshot(uploadResult.snapshot_id);
   };
+
+  // Verificar conexión al backend al cargar
+  useEffect(() => {
+    const checkBackend = async () => {
+      try {
+        const response = await fetch(API_URL('/api/health'));
+        if (response.ok) {
+          const data = await response.json();
+          console.log('✅ Backend conectado:', data);
+          setBackendStatus({ connected: true, loading: false, data });
+        } else {
+          console.error('❌ Backend respondió con error:', response.status);
+          setBackendStatus({ connected: false, loading: false, error: response.status });
+        }
+      } catch (error) {
+        console.error('❌ Error conectando al backend:', error.message);
+        setBackendStatus({ connected: false, loading: false, error: error.message });
+      }
+    };
+    
+    checkBackend();
+  }, []);
 
   return (
     <Router>
@@ -36,7 +60,29 @@ function App() {
               🗺️ Heatmap
             </Link>
           </div>
+          <div className="nav-status">
+            {backendStatus.loading ? (
+              <span className="status-badge loading">🔄 Conectando...</span>
+            ) : backendStatus.connected ? (
+              <span className="status-badge connected" title={`Cache: ${backendStatus.data?.cache_stats?.total || 0} dominios`}>
+                ✅ Backend OK
+              </span>
+            ) : (
+              <span className="status-badge disconnected" title={`Error: ${backendStatus.error}`}>
+                ❌ Backend offline
+              </span>
+            )}
+          </div>
         </nav>
+
+        {!backendStatus.loading && !backendStatus.connected && (
+          <div className="connection-alert">
+            <strong>⚠️ No se puede conectar al backend</strong>
+            <p>Backend URL: <code>{API_BASE_URL || 'localhost (via proxy)'}</code></p>
+            <p>Error: {backendStatus.error}</p>
+            <button onClick={() => window.location.reload()}>🔄 Reintentar</button>
+          </div>
+        )}
 
         <main className="app-main">
           <Routes>

@@ -50,6 +50,81 @@ body {
   gap: 1rem;
 }
 
+.nav-status {
+  display: flex;
+  align-items: center;
+}
+
+.status-badge {
+  padding: 0.5rem 1rem;
+  border-radius: 20px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.status-badge.loading {
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
+}
+
+.status-badge.connected {
+  background: rgba(46, 204, 113, 0.3);
+  color: white;
+  border: 1px solid rgba(46, 204, 113, 0.5);
+}
+
+.status-badge.disconnected {
+  background: rgba(231, 76, 60, 0.3);
+  color: white;
+  border: 1px solid rgba(231, 76, 60, 0.5);
+}
+
+.connection-alert {
+  background: #fff3cd;
+  border: 1px solid #ffc107;
+  padding: 1rem 2rem;
+  margin: 1rem auto;
+  max-width: 800px;
+  border-radius: 8px;
+  text-align: center;
+}
+
+.connection-alert strong {
+  display: block;
+  margin-bottom: 0.5rem;
+  color: #856404;
+}
+
+.connection-alert p {
+  margin: 0.5rem 0;
+  color: #856404;
+}
+
+.connection-alert code {
+  background: rgba(0, 0, 0, 0.1);
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+  font-family: monospace;
+}
+
+.connection-alert button {
+  margin-top: 1rem;
+  padding: 0.5rem 1.5rem;
+  background: #ffc107;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 600;
+  color: #856404;
+}
+
+.connection-alert button:hover {
+  background: #ffca2c;
+}
+
 .nav-link {
   color: white;
   text-decoration: none;
