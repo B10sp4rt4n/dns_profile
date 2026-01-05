@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import GlobalSummary from './GlobalSummary';
 import FilterBar from './FilterBar';
 import HeatmapGrid from './HeatmapGrid';
@@ -8,6 +8,7 @@ import {
   filterDomains,
   generatePredictiveAlerts 
 } from '../utils/domainLogic';
+import { fetchAllDomains } from '../services/api';
 import './DomainHeatmap.css';
 
 /**
@@ -26,11 +27,33 @@ import './DomainHeatmap.css';
  */
 const DomainHeatmap = ({ initialDomains = [] }) => {
   // Estado local
-  const [domains] = useState(initialDomains);
+  const [domains, setDomains] = useState(initialDomains);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedProvider, setSelectedProvider] = useState('all');
   const [sortBy, setSortBy] = useState('score-desc');
   const [selectedDomain, setSelectedDomain] = useState(null);
+
+  // Cargar dominios desde API al montar
+  useEffect(() => {
+    const loadDomains = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        const data = await fetchAllDomains();
+        setDomains(data.length > 0 ? data : initialDomains);
+      } catch (err) {
+        console.error('Error loading domains from API, using mock data:', err);
+        setError('No se pudo conectar con el backend. Usando datos de prueba.');
+        setDomains(initialDomains);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadDomains();
+  }, [initialDomains]);
 
   // Memoización para optimización de rendimiento
   // useMemo previene recálculos innecesarios en cada render
@@ -73,6 +96,21 @@ const DomainHeatmap = ({ initialDomains = [] }) => {
       {/* Header con alertas predictivas */}
       <div className="heatmap-header">
         <h1>ProspectScan - Security Heatmap</h1>
+        
+        {/* Loading state */}
+        {loading && (
+          <div className="loading-indicator">
+            <span>⏳ Cargando dominios desde backend...</span>
+          </div>
+        )}
+        
+        {/* Error state */}
+        {error && (
+          <div className="alert alert-warning">
+            ⚠️ {error}
+          </div>
+        )}
+        
         {predictiveAlerts.length > 0 && (
           <div className="alerts-container">
             {predictiveAlerts.map((alert, idx) => (
