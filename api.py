@@ -1,16 +1,25 @@
 """
 API REST para ProspectScan - Security Heatmap
 Expone funcionalidades de app_superficie.py como endpoints JSON
+
+ARQUITECTURA DE 5 CAPAS:
+1. Ingesta → ZoomInfo Excel (inmutable)
+2. Contexto → Derivación empresarial
+3. Postura → app_superficie.py
+4. Motor → cruce_semantico.py
+5. Focus → Validación humana (Capa 5)
 """
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, field_validator
 from typing import List, Optional, Dict, Any
 import pandas as pd
 from datetime import datetime
+import tempfile
+import os
 
-# Importar funciones del backend existente
+# Importar funciones del backend existente (Capa 3)
 from app_superficie import (
     analizar_dominio,
     analizar_dominios,
@@ -27,6 +36,21 @@ from app_superficie import (
 
 # Importar análisis enriquecido
 from enriched_analysis import generate_enriched_analysis
+
+# Importar Capa 1 y 2: Ingesta y Contexto
+from ingesta.zoominfo_adapter import procesar_ingesta_zoominfo, derivar_contexto
+from models.data_model_v2 import (
+    NivelPostura, PosturaSeguridad, ResultadoCruce, PrioridadAccion,
+    DISCLAIMER_PROSPECTSCAN
+)
+
+# Importar Capa 4: Motor de Cruce
+from motor.cruce_semantico import (
+    generar_resultado_cruce,
+    procesar_batch_cruce,
+    filtrar_por_prioridad,
+    resultado_a_dict
+)
 
 if CACHE_AVAILABLE:
     from db_cache import query_all_cached, get_cache_stats, _get_connection
@@ -503,6 +527,311 @@ def clear_cache():
     
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error al limpiar caché: {str(e)}")
+
+
+# ============================================================================
+# ENDPOINTS CAPA 1-4: PIPELINE COMPLETO PROSPECTSCAN
+# ============================================================================
+
+# Storage en memoria para snapshots (en producción usar DB)
+_snapshots_storage: Dict[str, Any] = {}
+_contextos_storage: Dict[str, Any] = {}
+_resultados_cruce_storage: Dict[str, ResultadoCruce] = {}
+
+
+@app.post("/api/ingesta/upload")
+async def upload_zoominfo_excel(file: UploadFile = File(...)):
+    """
+    Capa 1 - INGESTA: Sube reporte ZoomInfo Excel.
+    
+    IMPORTANTE: ProspectScan NO modifica estos datos.
+    ZoomInfo es la fuente de verdad.
+    
+    Retorna:
+    - snapshot_id: ID del snapshot creado
+    - empresas_count: Número de empresas procesadas
+    - dominios: Lista de dominios extraídos
+    """
+    if not file.filename.endswith(('.xlsx', '.xls')):
+        raise HTTPException(status_code=400, detail="Solo se aceptan archivos Excel (.xlsx, .xls)")
+    
+    try:
+        # Guardar archivo temporal
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx') as tmp:
+            content = await file.read()
+            tmp.write(content)
+            tmp_path = tmp.name
+        
+        try:
+            # Procesar ingesta (Capa 1 + 2)
+            snapshot, empresas, contextos = procesar_ingesta_zoominfo(tmp_path)
+            
+            # Almacenar en memoria
+            _snapshots_storage[snapshot.id] = snapshot
+            for ctx in contextos:
+                _contextos_storage[ctx.dominio] = ctx
+            
+            # Extraer dominios para respuesta
+            dominios = [e.dominio for e in empresas if e.dominio]
+            
+            return {
+                "status": "success",
+                "snapshot_id": snapshot.id,
+                "archivo_original": snapshot.archivo_origen,
+                "checksum": snapshot.checksum,
+                "empresas_count": len(empresas),
+                "dominios": dominios,
+                "timestamp": snapshot.fecha_creacion.isoformat(),
+                "mensaje": "Snapshot creado. Use POST /api/cruce/batch para ejecutar análisis completo."
+            }
+        finally:
+            # Limpiar archivo temporal
+            os.unlink(tmp_path)
+    
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error procesando archivo: {str(e)}")
+
+
+@app.post("/api/cruce/batch")
+def ejecutar_cruce_batch(
+    snapshot_id: str = Query(..., description="ID del snapshot a procesar"),
+    prioridad_minima: str = Query("MEDIA", description="Filtrar por prioridad mínima: CRITICA, ALTA, MEDIA, BAJA")
+):
+    """
+    Capa 3+4 - POSTURA + MOTOR: Ejecuta análisis de seguridad y cruce semántico.
+    
+    Para cada dominio del snapshot:
+    1. Obtiene PosturaSeguridad (Capa 3 - app_superficie.py)
+    2. Ejecuta cruce con Contexto (Capa 4 - REGLAS_CRUCE)
+    3. Genera ResultadoCruce con prioridad
+    
+    Retorna lista ordenada por score_oportunidad.
+    """
+    if snapshot_id not in _snapshots_storage:
+        raise HTTPException(status_code=404, detail=f"Snapshot {snapshot_id} no encontrado")
+    
+    try:
+        # Obtener contextos del snapshot
+        dominios_snapshot = [
+            dominio for dominio, ctx in _contextos_storage.items()
+            if ctx.snapshot_id == snapshot_id
+        ]
+        
+        if not dominios_snapshot:
+            raise HTTPException(status_code=400, detail="No hay dominios en este snapshot")
+        
+        resultados = []
+        errores = []
+        
+        for dominio in dominios_snapshot:
+            try:
+                # Capa 3: Análisis de seguridad
+                resultado_superficie = analizar_dominio(dominio)
+                
+                # Convertir a PosturaSeguridad
+                postura = _resultado_a_postura(resultado_superficie)
+                
+                # Capa 4: Cruce semántico
+                contexto = _contextos_storage[dominio]
+                resultado_cruce = generar_resultado_cruce(contexto, postura)
+                
+                # Almacenar
+                _resultados_cruce_storage[dominio] = resultado_cruce
+                resultados.append(resultado_cruce)
+                
+            except Exception as e:
+                errores.append({"dominio": dominio, "error": str(e)})
+        
+        # Filtrar por prioridad
+        prioridad_enum = PrioridadAccion(prioridad_minima.upper())
+        resultados_filtrados = filtrar_por_prioridad(resultados, prioridad_enum)
+        
+        # Ordenar por score
+        resultados_filtrados.sort(key=lambda r: r.score_oportunidad, reverse=True)
+        
+        return {
+            "disclaimer": DISCLAIMER_PROSPECTSCAN.strip(),
+            "snapshot_id": snapshot_id,
+            "total_procesados": len(resultados),
+            "total_filtrados": len(resultados_filtrados),
+            "filtro_prioridad": prioridad_minima,
+            "errores": errores,
+            "resultados": [resultado_a_dict(r) for r in resultados_filtrados]
+        }
+    
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error en cruce: {str(e)}")
+
+
+@app.get("/api/cruce/{dominio}")
+def get_resultado_cruce(dominio: str):
+    """
+    Obtiene ResultadoCruce para un dominio específico.
+    Debe haberse ejecutado el batch primero.
+    """
+    if dominio not in _resultados_cruce_storage:
+        raise HTTPException(
+            status_code=404, 
+            detail=f"No hay resultado de cruce para {dominio}. Ejecute /api/cruce/batch primero."
+        )
+    
+    return resultado_a_dict(_resultados_cruce_storage[dominio])
+
+
+@app.post("/api/cruce/dominio-individual")
+def analizar_dominio_completo(
+    dominio: str = Query(..., description="Dominio a analizar"),
+    industria: str = Query("general", description="Industria de la empresa"),
+    estado: str = Query("estable", description="Estado organizacional: ma_activo, en_transicion, en_crecimiento, estable, en_contraccion"),
+    señales: str = Query("", description="Señales de inversión separadas por coma: funding,hiring")
+):
+    """
+    Análisis completo de un dominio sin necesidad de Excel.
+    Útil para análisis ad-hoc o demos.
+    
+    Ejecuta las 4 capas:
+    1. Simula ingesta con datos proporcionados
+    2. Deriva contexto empresarial
+    3. Analiza postura de seguridad
+    4. Ejecuta cruce semántico
+    """
+    from models.data_model_v2 import (
+        EmpresaFuente, EstadoOrganizacional, PresionExterna, ContextoEmpresarial
+    )
+    from datetime import datetime
+    import uuid
+    
+    try:
+        # Capa 1+2: Simular ingesta y derivar contexto
+        empresa = EmpresaFuente(
+            dominio=dominio,
+            nombre_empresa=dominio.split('.')[0].upper(),
+            industria=industria,
+            pais="MX",
+            empleados_rango="desconocido",
+            ingresos_rango="desconocido",
+            tecnologias_detectadas=[],
+            fecha_extraccion=datetime.utcnow()
+        )
+        
+        # Mapear estado
+        estado_map = {
+            "ma_activo": EstadoOrganizacional.MA_ACTIVO,
+            "en_transicion": EstadoOrganizacional.EN_TRANSICION,
+            "en_crecimiento": EstadoOrganizacional.EN_CRECIMIENTO,
+            "estable": EstadoOrganizacional.ESTABLE,
+            "en_contraccion": EstadoOrganizacional.EN_CONTRACCION,
+        }
+        estado_org = estado_map.get(estado.lower(), EstadoOrganizacional.DESCONOCIDO)
+        
+        # Derivar presión externa por industria
+        presion_alta = ["finance", "banking", "healthcare", "fintech", "insurance"]
+        presion_media = ["retail", "technology", "telecom", "energy"]
+        
+        if industria.lower() in presion_alta:
+            presion = PresionExterna.ALTA
+        elif industria.lower() in presion_media:
+            presion = PresionExterna.MEDIA
+        else:
+            presion = PresionExterna.BAJA
+        
+        # Detectar regulaciones
+        regulaciones = []
+        if industria.lower() in ["finance", "banking", "fintech", "insurance"]:
+            regulaciones.extend(["SOX", "PCI-DSS"])
+        if industria.lower() == "healthcare":
+            regulaciones.append("HIPAA")
+        # GDPR si tiene presencia EU (asumimos por defecto)
+        regulaciones.append("GDPR")
+        
+        contexto = ContextoEmpresarial(
+            dominio=dominio,
+            snapshot_id=str(uuid.uuid4()),
+            empresa_fuente=empresa,
+            estado_organizacional=estado_org,
+            ritmo_cambio="moderado",
+            presion_externa=presion,
+            señales_inversion=señales.split(",") if señales else [],
+            industria_detectada=industria,
+            regulaciones_aplicables=regulaciones,
+            fecha_derivacion=datetime.utcnow()
+        )
+        
+        # Capa 3: Postura de seguridad
+        resultado_superficie = analizar_dominio(dominio)
+        postura = _resultado_a_postura(resultado_superficie)
+        
+        # Capa 4: Cruce semántico
+        resultado_cruce = generar_resultado_cruce(contexto, postura)
+        
+        # Almacenar
+        _contextos_storage[dominio] = contexto
+        _resultados_cruce_storage[dominio] = resultado_cruce
+        
+        return resultado_a_dict(resultado_cruce)
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error en análisis: {str(e)}")
+
+
+def _resultado_a_postura(resultado) -> PosturaSeguridad:
+    """
+    Convierte ResultadoSuperficie (Capa 3) a PosturaSeguridad para el Motor.
+    """
+    from models.data_model_v2 import NivelPostura, PosturaSeguridad
+    
+    # Mapear posturas
+    postura_map = {
+        "Avanzada": NivelPostura.AVANZADA,
+        "Intermedia": NivelPostura.INTERMEDIA,
+        "Básica": NivelPostura.BASICA,
+    }
+    
+    postura_identidad = postura_map.get(
+        resultado.identidad.postura.value, NivelPostura.BASICA
+    )
+    postura_exposicion = postura_map.get(
+        resultado.exposicion.postura.value, NivelPostura.BASICA
+    )
+    postura_general = postura_map.get(
+        resultado.postura_general.value, NivelPostura.BASICA
+    )
+    
+    # Calcular score técnico
+    score = 50
+    if resultado.identidad.estado_spf.value == "OK":
+        score += 15
+    elif resultado.identidad.estado_spf.value == "Débil":
+        score += 5
+    
+    if resultado.identidad.estado_dmarc.value in ["Reject", "Quarantine"]:
+        score += 15
+    elif resultado.identidad.estado_dmarc.value == "None":
+        score += 5
+    
+    if resultado.exposicion.https.value in ["Estricto", "OK"]:
+        score += 10
+    
+    if resultado.exposicion.cdn_waf:
+        score += 10
+    
+    return PosturaSeguridad(
+        dominio=resultado.dominio,
+        postura_identidad=postura_identidad,
+        postura_exposicion=postura_exposicion,
+        postura_general=postura_general,
+        tiene_spf=resultado.identidad.estado_spf.value != "Ausente",
+        tiene_dmarc=resultado.identidad.estado_dmarc.value != "Ausente",
+        tiene_https=resultado.exposicion.https.value not in ["No disponible", "Redirect Inseguro"],
+        tiene_waf=resultado.exposicion.cdn_waf is not None,
+        vendors_detectados=resultado.identidad.vendors_seguridad or [],
+        score_agregado=min(100, max(0, score)),
+        fecha_analisis=datetime.utcnow()
+    )
 
 
 # ============================================================================
