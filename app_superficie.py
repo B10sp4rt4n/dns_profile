@@ -1799,7 +1799,7 @@ def main():
                                 if dominios_pendientes:
                                     st.info(f"🔍 Analizando {len(dominios_pendientes)} dominios nuevos...")
                                     with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
-                                        nuevos = list(executor.map(analizar_dominio_completo, dominios_pendientes))
+                                        nuevos = list(executor.map(analizar_dominio, dominios_pendientes))
                                     nuevos = [r for r in nuevos if r]
                                     
                                     if nuevos:
@@ -1820,7 +1820,7 @@ def main():
                                 # Sin caché - analizar todo
                                 st.info(f"🔍 Analizando {len(dominios_zoom)} dominios...")
                                 with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
-                                    resultados = list(executor.map(analizar_dominio_completo, dominios_zoom))
+                                    resultados = list(executor.map(analizar_dominio, dominios_zoom))
                                 resultados = [r for r in resultados if r]
                                 if resultados:
                                     resultados_df = pd.DataFrame([r.__dict__ for r in resultados])
