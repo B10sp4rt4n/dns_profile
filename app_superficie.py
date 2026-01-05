@@ -1441,8 +1441,8 @@ def main():
     st.set_page_config(layout="wide", page_title="ProspectScan - Diagnóstico de Seguridad")
     st.title("🧠 ProspectScan - Diagnóstico de Superficie Digital")
 
-    # Tabs: Análisis masivo vs Consulta rápida
-    tab1, tab2, tab3 = st.tabs(["📁 Cargar archivo", "🔍 Dominio único", "📊 Reportes (cache)"])
+    # Tabs: Análisis masivo vs Consulta rápida vs Pipeline Cruce
+    tab1, tab2, tab3, tab4 = st.tabs(["📁 Cargar archivo", "🔍 Dominio único", "📊 Reportes (cache)", "🎯 Pipeline Cruce"])
 
     with tab1:
         # Quick Start cuando no hay archivo
@@ -1727,6 +1727,120 @@ def main():
                 st.error("No se pudo conectar a la base de datos")
                 if stats.get("error"):
                     st.caption(f"Error: {stats.get('error')}")
+    
+    # Tab 4: Pipeline de Cruce Semántico
+    with tab4:
+        st.markdown("### 🎯 Pipeline de Cruce Semántico (Capas 1-4)")
+        st.markdown("**Integración:** Ingesta ZoomInfo → Contexto Empresarial → Cruce con Postura → Priorización")
+        
+        # Upload de archivo ZoomInfo
+        st.markdown("#### 📤 Paso 1: Cargar archivo ZoomInfo")
+        zoominfo_file = st.file_uploader("Sube reporte Excel de ZoomInfo", type=["xlsx", "xls"], key="zoominfo_upload")
+        
+        if zoominfo_file:
+            try:
+                # Leer Excel
+                df_zoom = pd.read_excel(zoominfo_file)
+                st.success(f"✅ Archivo cargado: {len(df_zoom)} empresas")
+                
+                with st.expander("👀 Vista previa de datos", expanded=False):
+                    st.dataframe(df_zoom.head(10))
+                
+                # Intentar extraer dominios del Excel
+                dominios_col = None
+                for col in ['Website', 'website', 'Domain', 'domain', 'Company Website']:
+                    if col in df_zoom.columns:
+                        dominios_col = col
+                        break
+                
+                if dominios_col:
+                    dominios_zoom = df_zoom[dominios_col].dropna().unique().tolist()
+                    dominios_zoom = [extraer_dominio(str(d)) for d in dominios_zoom if d]
+                    dominios_zoom = [d for d in dominios_zoom if d and d not in DOMINIOS_PERSONALES]
+                    
+                    st.info(f"📧 Se extrajeron **{len(dominios_zoom)} dominios** únicos")
+                    
+                    if st.button("▶️ Ejecutar Análisis de Postura", type="primary"):
+                        with st.spinner("Analizando superficie digital de los dominios..."):
+                            # Usar la misma lógica que el tab1
+                            resultados = []
+                            
+                            # Análisis masivo con caché
+                            if CACHE_AVAILABLE:
+                                cached = get_cached_dominios(dominios_zoom)
+                                dominios_analizar = [d for d in dominios_zoom if d not in cached]
+                                resultados.extend(cached.values())
+                                
+                                if dominios_analizar:
+                                    st.info(f"Analizando {len(dominios_analizar)} dominios no cacheados...")
+                                    with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+                                        nuevos = list(executor.map(analizar_dominio_completo, dominios_analizar))
+                                    resultados.extend([r for r in nuevos if r])
+                                    
+                                    # Guardar en caché
+                                    for r in nuevos:
+                                        if r:
+                                            save_to_cache(r)
+                            else:
+                                # Sin caché
+                                with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+                                    resultados = list(executor.map(analizar_dominio_completo, dominios_zoom))
+                                resultados = [r for r in resultados if r]
+                            
+                            if resultados:
+                                df_results = pd.DataFrame([r.__dict__ for r in resultados])
+                                st.session_state["pipeline_results"] = df_results
+                                st.success(f"✅ Análisis completado: {len(resultados)} dominios")
+                            else:
+                                st.error("No se pudieron analizar los dominios")
+                
+                else:
+                    st.warning("⚠️ No se encontró columna de dominios. Columnas disponibles:")
+                    st.write(df_zoom.columns.tolist())
+                    st.info("Renombra la columna a 'Website' o 'Domain' en tu Excel")
+                    
+            except Exception as e:
+                st.error(f"Error al procesar archivo: {e}")
+        
+        # Mostrar resultados si existen
+        if "pipeline_results" in st.session_state:
+            df_res = st.session_state["pipeline_results"]
+            st.markdown("---")
+            st.markdown("#### 📊 Resultados del Análisis")
+            
+            # Métricas globales
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                st.metric("Dominios analizados", len(df_res))
+            with col2:
+                score_promedio = df_res['score_final'].mean()
+                st.metric("Score Promedio", f"{score_promedio:.1f}/100")
+            with col3:
+                con_dmarc = len(df_res[df_res['dmarc_estado'] != 'Ausente'])
+                st.metric("Con DMARC", f"{con_dmarc} ({con_dmarc/len(df_res)*100:.0f}%)")
+            with col4:
+                con_hsts = len(df_res[df_res['hsts_presente']])
+                st.metric("Con HSTS", f"{con_hsts} ({con_hsts/len(df_res)*100:.0f}%)")
+            
+            # Vista global
+            vista_global(df_res)
+            
+            # Tabla detallada
+            st.markdown("### 🗂️ Detalle por Dominio")
+            st.dataframe(
+                df_res[['dominio', 'score_final', 'email_provider', 'dmarc_estado', 'hsts_presente', 'cdn_waf']],
+                use_container_width=True,
+                height=400
+            )
+            
+            # Exportar
+            csv = df_res.to_csv(index=False)
+            st.download_button(
+                "📥 Exportar resultados (CSV)",
+                csv,
+                f"pipeline_cruce_{datetime.now().strftime('%Y%m%d')}.csv",
+                "text/csv"
+            )
 
 
 if __name__ == "__main__":
