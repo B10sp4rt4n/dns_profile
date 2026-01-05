@@ -1739,36 +1739,40 @@ def main():
         
         if zoominfo_file:
             try:
-                # Leer Excel - primero sin headers para detectar estructura
+                # Lectura robusta: una sola vez sin headers
                 df_raw = pd.read_excel(zoominfo_file, header=None)
                 
-                # Buscar fila que contiene "Website" o "Domain" (los headers reales)
-                header_row = None
-                for idx, row in df_raw.iterrows():
-                    row_values = [str(v).lower() for v in row.values if pd.notna(v)]
-                    if any('website' in v or 'domain' in v for v in row_values):
+                # Buscar fila que contiene headers (Website, Domain, etc.)
+                header_row = 0
+                keywords = ['website', 'domain', 'company name', 'company']
+                
+                for idx, row in df_raw.head(20).iterrows():  # Solo buscar en primeras 20 filas
+                    row_str = ' '.join([str(v).lower() for v in row.values if pd.notna(v)])
+                    if any(kw in row_str for kw in keywords):
                         header_row = idx
                         break
                 
-                if header_row is not None:
-                    # Releer con la fila correcta como header
-                    zoominfo_file.seek(0)  # Reset file pointer
-                    df_zoom = pd.read_excel(zoominfo_file, header=header_row)
-                    st.success(f"✅ Headers detectados en fila {header_row + 1}. Total: {len(df_zoom)} empresas")
+                # Usar la fila encontrada como headers y eliminar filas anteriores
+                if header_row > 0:
+                    df_zoom = df_raw.iloc[header_row:].reset_index(drop=True)
+                    df_zoom.columns = df_zoom.iloc[0]  # Primera fila son los headers
+                    df_zoom = df_zoom.iloc[1:].reset_index(drop=True)  # Eliminar fila de headers
+                    st.success(f"✅ Headers en fila {header_row + 1}. Total: {len(df_zoom)} empresas")
                 else:
-                    # Si no encontró, usar primera fila como header
-                    zoominfo_file.seek(0)
-                    df_zoom = pd.read_excel(zoominfo_file, header=0)
-                    st.info(f"📄 Usando primera fila como headers. Total: {len(df_zoom)} empresas")
+                    df_zoom = df_raw.copy()
+                    df_zoom.columns = df_zoom.iloc[0]
+                    df_zoom = df_zoom.iloc[1:].reset_index(drop=True)
+                    st.info(f"📄 Headers en fila 1. Total: {len(df_zoom)} empresas")
                 
                 # Limpiar nombres de columnas
-                df_zoom.columns = [str(col).strip() for col in df_zoom.columns]
+                df_zoom.columns = [str(col).strip() if pd.notna(col) else f'col_{i}' 
+                                   for i, col in enumerate(df_zoom.columns)]
                 
                 with st.expander("👀 Vista previa de datos", expanded=False):
-                    st.write(f"**Columnas detectadas:** {list(df_zoom.columns)}")
+                    st.write(f"**Columnas:** {list(df_zoom.columns)}")
                     st.dataframe(df_zoom.head(10))
                 
-                # Intentar extraer dominios del Excel (case-insensitive)
+                # Buscar columna de dominios (case-insensitive)
                 dominios_col = None
                 columnas_lower = {str(col).lower().strip(): col for col in df_zoom.columns}
                 
