@@ -1100,7 +1100,9 @@ def generar_graficos_cache(df: pd.DataFrame):
             xaxis_title="% de dominios",
             yaxis_title=""
         )
+        # Nota aclaratoria
         st.plotly_chart(fig_adopcion, use_container_width=True)
+        st.caption("💡 DMARC activo incluye: Reject, Quarantine y None (cualquier política configurada)")
 
     # --- Fila 2: Proveedores de Email + CDN/WAF ---
     col3, col4 = st.columns(2)
@@ -1156,17 +1158,25 @@ def generar_graficos_cache(df: pd.DataFrame):
 
     # --- Métricas de oportunidad comercial ---
     st.markdown("### 💼 Oportunidades Comerciales")
-    opp_col1, opp_col2, opp_col3, opp_col4 = st.columns(4)
-
+    
+    # Calculamos métricas separadas para claridad
     basica_pct = (df["postura_general"] == "Básica").sum() / total * 100
-    sin_dmarc_pct = (df["dmarc_estado"] != "Reject").sum() / total * 100
+    sin_dmarc_pct = (df["dmarc_estado"] == "Ausente").sum() / total * 100  # ✅ Solo ausentes
+    dmarc_no_optimo_pct = (df["dmarc_estado"].isin(["Quarantine", "None"])).sum() / total * 100  # Configurado pero débil
     sin_waf_pct = (df["cdn_waf"] == "None").sum() / total * 100
     sin_gateway_pct = (df["correo_gateway"] == "None").sum() / total * 100
-
+    
+    # Mostramos 4 métricas principales
+    opp_col1, opp_col2, opp_col3, opp_col4 = st.columns(4)
     opp_col1.metric("🔥 Postura Básica", f"{basica_pct:.0f}%", help="Mayor potencial de venta")
-    opp_col2.metric("⚠️ Sin DMARC", f"{sin_dmarc_pct:.0f}%", help="Vulnerables a spoofing")
+    opp_col2.metric("⚠️ Sin DMARC", f"{sin_dmarc_pct:.0f}%", help="Sin registro DMARC configurado")
     opp_col3.metric("🌐 Sin WAF", f"{sin_waf_pct:.0f}%", help="Sin protección web")
     opp_col4.metric("📧 Sin Gateway", f"{sin_gateway_pct:.0f}%", help="Sin filtrado de email")
+    
+    # Métrica adicional de contexto
+    if dmarc_no_optimo_pct > 0:
+        st.caption(f"📊 Adicional: {dmarc_no_optimo_pct:.0f}% con DMARC configurado pero no óptimo (Quarantine/None vs Reject)")
+
 
 
 def vista_global(df: pd.DataFrame):
@@ -1177,7 +1187,7 @@ def vista_global(df: pd.DataFrame):
     sin_gateway = int((df["correo_gateway"] == "None").sum())
     sin_waf = int((df["cdn_waf"] == "None").sum())
     avanzada = int((df["postura_general"] == "Avanzada").sum())
-    sin_dmarc = int((df["dmarc_estado"] != "Reject").sum())
+    sin_dmarc = int((df["dmarc_estado"] == "Ausente").sum())  # ✅ Solo ausentes
     
     # Score promedio si existe la columna
     score_promedio = df["score"].mean() if "score" in df.columns else 0
@@ -1227,14 +1237,14 @@ def aplicar_filtros(df: pd.DataFrame) -> pd.DataFrame:
         with col1:
             filtro_basica = st.checkbox("Solo postura básica")
         with col2:
-            filtro_dmarc = st.checkbox("Sin DMARC activo")
+            filtro_dmarc = st.checkbox("DMARC no óptimo (no Reject)")
         with col3:
             filtro_asimetria = st.checkbox("Asimetría correo / web")
 
     if filtro_basica:
         df = df[df.postura_general == "Básica"]
     if filtro_dmarc:
-        df = df[df.dmarc_estado != "Reject"]
+        df = df[df.dmarc_estado != "Reject"]  # Incluye: Quarantine, None, Ausente
     if filtro_asimetria:
         df = df[df.postura_identidad != df.postura_exposicion]
 
