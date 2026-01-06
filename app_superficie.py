@@ -2162,6 +2162,244 @@ def main():
                         use_container_width=True
                     )
 
+    # =========================================================================
+    # TAB 5: ANÁLISIS ESTRUCTURAL
+    # =========================================================================
+    with tab5:
+        st.markdown("### 📝 Generador de Análisis Estructural")
+        st.markdown("""
+        *Genera reportes narrativos automatizados basados exclusivamente en datos observables.*
+        
+        **Compatible con:**
+        - 🤖 OpenAI / ChatGPT 4.1 → 5.0
+        - 🔷 Azure OpenAI / Copilot Studio
+        - 📊 Reportes ejecutivos y técnicos
+        """)
+        
+        st.markdown("---")
+        
+        # Opciones de origen de datos
+        origen = st.radio(
+            "📂 Selecciona el origen de datos:",
+            ["Usar resultados del Pipeline Cruce", "Cargar CSV nuevo", "Usar cache de dominios"],
+            horizontal=True
+        )
+        
+        df_analisis = None
+        
+        if origen == "Usar resultados del Pipeline Cruce":
+            if "pipeline_results" in st.session_state and st.session_state["pipeline_results"] is not None:
+                df_analisis = st.session_state["pipeline_results"]
+                st.success(f"✅ {len(df_analisis)} dominios disponibles desde Pipeline Cruce")
+            else:
+                st.warning("⚠️ No hay resultados en Pipeline Cruce. Ve al tab 'Pipeline Cruce' primero.")
+        
+        elif origen == "Cargar CSV nuevo":
+            archivo_analisis = st.file_uploader(
+                "Sube el CSV exportado de ProspectScan", 
+                type=["csv"],
+                key="analisis_csv"
+            )
+            if archivo_analisis:
+                df_analisis = pd.read_csv(archivo_analisis)
+                st.success(f"✅ {len(df_analisis)} filas cargadas")
+                st.dataframe(df_analisis.head(5), use_container_width=True)
+        
+        elif origen == "Usar cache de dominios":
+            if CACHE_AVAILABLE:
+                try:
+                    df_cache, _ = get_cached_dominios([])
+                    if not df_cache.empty:
+                        df_analisis = df_cache
+                        st.success(f"✅ {len(df_analisis)} dominios en cache")
+                    else:
+                        st.warning("⚠️ Cache vacío")
+                except Exception as e:
+                    st.error(f"Error accediendo al cache: {e}")
+            else:
+                st.warning("⚠️ Cache no disponible")
+        
+        if df_analisis is not None and len(df_analisis) > 0:
+            st.markdown("---")
+            st.markdown("### ⚙️ Configuración de Generación")
+            
+            col_cfg1, col_cfg2 = st.columns(2)
+            
+            with col_cfg1:
+                # Seleccionar dominios específicos o todos
+                dominios_disponibles = df_analisis['dominio'].tolist() if 'dominio' in df_analisis.columns else []
+                
+                seleccion_mode = st.radio(
+                    "Dominios a analizar:",
+                    ["Todos", "Seleccionar específicos"],
+                    horizontal=True
+                )
+                
+                if seleccion_mode == "Seleccionar específicos" and dominios_disponibles:
+                    dominios_seleccionados = st.multiselect(
+                        "Selecciona dominios:",
+                        dominios_disponibles,
+                        default=dominios_disponibles[:5] if len(dominios_disponibles) > 5 else dominios_disponibles
+                    )
+                    df_para_analisis = df_analisis[df_analisis['dominio'].isin(dominios_seleccionados)]
+                else:
+                    df_para_analisis = df_analisis
+                    dominios_seleccionados = dominios_disponibles
+                
+                st.info(f"📋 {len(df_para_analisis)} dominios seleccionados")
+            
+            with col_cfg2:
+                formato_salida = st.selectbox(
+                    "📄 Formato de exportación:",
+                    ["Vista previa (pantalla)", "CSV con análisis", "Markdown (.md)", "Texto plano (.txt)", "JSON"]
+                )
+            
+            # Botón de generación
+            if st.button("🚀 Generar Análisis Estructural", type="primary", use_container_width=True):
+                with st.spinner("Generando análisis..."):
+                    from analisis_estructural import procesar_dataframe
+                    resultados = procesar_dataframe(df_para_analisis)
+                    st.session_state["analisis_resultados_tab5"] = resultados
+                    st.success(f"✅ {len(resultados)} análisis generados")
+            
+            # Mostrar resultados
+            if "analisis_resultados_tab5" in st.session_state and st.session_state["analisis_resultados_tab5"]:
+                resultados = st.session_state["analisis_resultados_tab5"]
+                
+                st.markdown("---")
+                st.markdown("### 📊 Resultados")
+                
+                if formato_salida == "Vista previa (pantalla)":
+                    # Mostrar cada análisis en un expander
+                    for idx, r in enumerate(resultados, 1):
+                        with st.expander(f"📄 {r['empresa']} ({r['dominio']})", expanded=(idx == 1)):
+                            st.code(r['analisis'], language=None)
+                            
+                            # Botón para copiar individual
+                            st.download_button(
+                                f"📥 Descargar análisis de {r['dominio']}",
+                                r['analisis'],
+                                file_name=f"analisis_{r['dominio'].replace('.', '_')}.txt",
+                                mime="text/plain",
+                                key=f"download_tab5_{idx}"
+                            )
+                
+                elif formato_salida == "CSV con análisis":
+                    df_export = pd.DataFrame(resultados)
+                    csv_data = df_export.to_csv(index=False, encoding="utf-8-sig")
+                    
+                    st.download_button(
+                        "📥 Descargar CSV con análisis",
+                        csv_data,
+                        file_name=f"prospectscan_analisis_estructural_{pd.Timestamp.now().strftime('%Y%m%d_%H%M')}.csv",
+                        mime="text/csv",
+                        use_container_width=True
+                    )
+                    
+                    st.dataframe(df_export[['empresa', 'dominio']], use_container_width=True)
+                
+                elif formato_salida == "Markdown (.md)":
+                    # Generar contenido Markdown
+                    md_content = f"# ProspectScan - Análisis Estructural\n\n"
+                    md_content += f"Generado: {pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
+                    md_content += f"Total de organizaciones: {len(resultados)}\n\n---\n\n"
+                    
+                    for idx, r in enumerate(resultados, 1):
+                        md_content += f"## {idx}. {r['empresa']} ({r['dominio']})\n\n"
+                        md_content += f"```\n{r['analisis']}\n```\n\n---\n\n"
+                    
+                    st.download_button(
+                        "📥 Descargar Markdown",
+                        md_content,
+                        file_name=f"prospectscan_analisis_{pd.Timestamp.now().strftime('%Y%m%d_%H%M')}.md",
+                        mime="text/markdown",
+                        use_container_width=True
+                    )
+                    
+                    with st.expander("Vista previa Markdown"):
+                        st.markdown(md_content[:3000] + "..." if len(md_content) > 3000 else md_content)
+                
+                elif formato_salida == "Texto plano (.txt)":
+                    txt_content = "═" * 80 + "\n"
+                    txt_content += "PROSPECTSCAN - ANÁLISIS ESTRUCTURAL BATCH\n"
+                    txt_content += f"Generado: {pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+                    txt_content += f"Total: {len(resultados)} organizaciones\n"
+                    txt_content += "═" * 80 + "\n\n"
+                    
+                    for idx, r in enumerate(resultados, 1):
+                        txt_content += f"\n{'═' * 80}\n"
+                        txt_content += f"#{idx} - {r['empresa'].upper()} ({r['dominio']})\n"
+                        txt_content += "═" * 80 + "\n\n"
+                        txt_content += r['analisis']
+                        txt_content += "\n\n"
+                    
+                    st.download_button(
+                        "📥 Descargar TXT",
+                        txt_content,
+                        file_name=f"prospectscan_analisis_{pd.Timestamp.now().strftime('%Y%m%d_%H%M')}.txt",
+                        mime="text/plain",
+                        use_container_width=True
+                    )
+                    
+                    with st.expander("Vista previa TXT"):
+                        st.text(txt_content[:2000] + "..." if len(txt_content) > 2000 else txt_content)
+                
+                elif formato_salida == "JSON":
+                    import json
+                    json_data = json.dumps(resultados, ensure_ascii=False, indent=2)
+                    
+                    st.download_button(
+                        "📥 Descargar JSON",
+                        json_data,
+                        file_name=f"prospectscan_analisis_{pd.Timestamp.now().strftime('%Y%m%d_%H%M')}.json",
+                        mime="application/json",
+                        use_container_width=True
+                    )
+                    
+                    with st.expander("Vista previa JSON"):
+                        st.json(resultados[:3] if len(resultados) > 3 else resultados)
+                
+                # Guía de integración con OpenAI
+                st.markdown("---")
+                with st.expander("🤖 Guía de Integración con OpenAI/ChatGPT"):
+                    st.markdown("""
+                    ### Cómo usar estos análisis con IA
+                    
+                    1. **OpenAI API (Python):**
+                    ```python
+                    import openai
+                    
+                    analisis = resultados[0]['analisis']
+                    
+                    response = openai.chat.completions.create(
+                        model="gpt-4",
+                        messages=[
+                            {"role": "system", "content": "Eres un analista de ciberseguridad."},
+                            {"role": "user", "content": f"Resume para C-Level:\\n{analisis}"}
+                        ]
+                    )
+                    print(response.choices[0].message.content)
+                    ```
+                    
+                    2. **Azure OpenAI / Copilot Studio:**
+                       - Importa el JSON como fuente de datos
+                       - Crea flujos de trabajo automatizados
+                    
+                    3. **Prompts sugeridos:**
+                       - "Clasifica este dominio por urgencia de contacto"
+                       - "Genera un email de prospección basado en estos hallazgos"
+                       - "Identifica las 3 principales debilidades"
+                       - "Resume para audiencia técnica vs ejecutiva"
+                    
+                    **⚠️ Importante:** La IA nunca debe inventar datos. Solo debe:
+                    - Reformular
+                    - Resumir  
+                    - Clasificar
+                    - Priorizar
+                    
+                    Basándose exclusivamente en los datos observables del análisis.
+                    """)
+
 
 def enriquecer_con_contexto(df_postura: pd.DataFrame, df_zoom: pd.DataFrame, dominios_col: str) -> pd.DataFrame:
     """Enriquece resultados de postura con contexto empresarial del Excel ZoomInfo."""
@@ -2389,11 +2627,6 @@ def mostrar_tarjeta_oportunidad(row: pd.Series, score_col: str):
         talking = row.get('talking_points', '')
         if talking:
             st.info(f"💬 **Talking Points:** {talking}")
-
-    # =========================================================================
-    # TAB 5: ANÁLISIS ESTRUCTURAL
-    # =========================================================================
-    with tab5:
         st.markdown("### 📝 Generador de Análisis Estructural")
         st.markdown("""
         *Genera reportes narrativos automatizados basados exclusivamente en datos observables.*
