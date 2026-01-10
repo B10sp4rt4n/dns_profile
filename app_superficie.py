@@ -2208,16 +2208,16 @@ def main():
         elif origen == "Usar cache de dominios":
             if CACHE_AVAILABLE:
                 try:
-                    df_cache, _ = get_cached_dominios([])
-                    if not df_cache.empty:
+                    df_cache = query_all_cached()
+                    if df_cache is not None and not df_cache.empty:
                         df_analisis = df_cache
                         st.success(f"✅ {len(df_analisis)} dominios en cache")
                     else:
-                        st.warning("⚠️ Cache vacío")
+                        st.warning("⚠️ Cache vacío. Analiza dominios primero en otras pestañas.")
                 except Exception as e:
                     st.error(f"Error accediendo al cache: {e}")
             else:
-                st.warning("⚠️ Cache no disponible")
+                st.warning("⚠️ Cache no disponible. Configura DATABASE_URL o NEON_DATABASE_URL.")
         
         if df_analisis is not None and len(df_analisis) > 0:
             st.markdown("---")
